@@ -1,0 +1,24 @@
+{
+    "name": "@vibecoding/ai-chat-core",
+    "version": "1.0.0",
+    "private": true,
+    "main": "src/index.ts",
+    "types": "src/index.ts",
+    "scripts": {
+        "build": "tsc",
+        "dev": "tsc --watch",
+        "type-check": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@vibecoding/api-client": "1.0.0",
+        "socket.io-client": "^4.7.5",
+        "zustand": "^4.4.7"
+    },
+    "devDependencies": {
+        "@types/react": "^19.1.1",
+        "typescript": "^5.8.3"
+    },
+    "peerDependencies": {
+        "react": ">=18.2.0"
+    }
+}

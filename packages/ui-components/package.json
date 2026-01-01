@@ -1,0 +1,25 @@
+{
+  "name": "@vibecoding/ui-components",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "lint": "eslint .",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "19.1.1",
+    "react-native": "0.82.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.1",
+    "@types/react-native": "^0.73.0",
+    "typescript": "^5.8.3"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  }
+}
+

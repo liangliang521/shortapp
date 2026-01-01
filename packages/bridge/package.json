@@ -1,0 +1,12 @@
+{
+  "name": "@vibecoding/web-rn-bridge",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "private": true,
+  "license": "MIT",
+  "dependencies": {
+    "react-native-permissions": "^4.1.0"
+  }
+}
+

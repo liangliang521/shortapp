@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, TouchableOpacity, TextInput, SafeAreaView } from 'react-native';
-import PreviewScreen from './src/screens/PreviewScreen';
+import PreviewScreen from './src/PreviewScreen';
 import { normalizeExpUrlToHttp } from './src/utils/url';
 
 export default function App() {

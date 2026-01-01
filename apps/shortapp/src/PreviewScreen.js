@@ -10,8 +10,8 @@ import {
   requireNativeComponent,
   SafeAreaView
 } from 'react-native';
-import SubAppLauncherService, { LoadingProgress } from '../services/SubAppLauncher';
-import { normalizeExpUrlToHttp } from '../utils/url';
+import SubAppLauncherService, { LoadingProgress } from './services/SubAppLauncher';
+import { normalizeExpUrlToHttp } from './utils/url';
 
 // Native view component for sub-app container
 const SubAppContainerView = requireNativeComponent('SubAppContainerView');
