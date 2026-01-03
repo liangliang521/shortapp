@@ -56,5 +56,15 @@ target 'shortapp' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
+    
+    # Fix modulemap path issues
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        # Ensure modulemap is found correctly
+        config.build_settings['DEFINES_MODULE'] = 'YES'
+        # Remove armv7 architecture as it's no longer supported
+        config.build_settings['EXCLUDED_ARCHS[sdk=iphoneos*]'] = 'armv7'
+      end
+    end
   end
 end

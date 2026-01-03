@@ -3,7 +3,7 @@
  * 包含图片压缩、格式转换等功能
  */
 
-import ImageResizer from '@bam.tech/react-native-image-resizer';
+// import ImageResizer from '@bam.tech/react-native-image-resizer'; // 暂时注释，避免 RCT-Folly 编译问题
 
 // 图片相关常量
 export const MAX_IMAGES = 5; // 最多选择5张图片
@@ -16,6 +16,13 @@ export const IMAGE_QUALITY = 70; // 图片质量 (0-100，react-native-image-res
  * @returns 压缩后的图片URI
  */
 export const compressImage = async (uri: string): Promise<string> => {
+    // 暂时禁用图片压缩功能，避免 react-native-image-resizer 的 RCT-Folly 编译问题
+    // TODO: 修复 RCT-Folly/glog 编译问题后重新启用
+    console.warn('⚠️ [compressImage] Image compression is temporarily disabled');
+    console.log('⚠️ [compressImage] Returning original image URI:', uri);
+    return uri;
+
+    /* 原始压缩代码 - 暂时注释
     try {
         console.log('🗜️ [compressImage] Starting compression...');
         console.log('🗜️ [compressImage] Original URI:', uri);
@@ -49,6 +56,7 @@ export const compressImage = async (uri: string): Promise<string> => {
         console.warn('⚠️ [compressImage] Using original image');
         return uri;
     }
+    */
 };
 
 /**
