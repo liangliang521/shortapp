@@ -23,7 +23,7 @@ import { useAuth } from '../hooks/useAuth';
 import { httpClient } from '@vibecoding/api-client';
 import { ensurePublishedAndShare } from '../utils/shareUtils';
 import OverlayAIChat from '../components/OverlayAIChat';
-import { AIChatIcon, ShareIcon, StopCircleIcon } from '../components/icons/SvgIcons';
+import { AIChatIcon, ShareIcon, StopCircleIcon, RefreshIcon } from '../components/icons/SvgIcons';
 import { LiquidGlassView, isLiquidGlassSupported } from '@callstack/liquid-glass';
 import { BlurView } from '@react-native-community/blur';
 import { websocketClient } from '@vibecoding/ai-chat-core/src/websocketClient';
@@ -52,10 +52,11 @@ type ProjectWebViewRouteParams = {
 type TopActionsContentProps = {
   handleShare: () => void;
   handleGoHome: () => void;
+  handleRefresh: () => void;
 };
 
 // 提取 Top Actions 内容组件，方便在 LiquidGlass 和 View 中复用
-const TopActionsContent = ({ handleShare, handleGoHome }: TopActionsContentProps) => (
+const TopActionsContent = ({ handleShare, handleGoHome, handleRefresh }: TopActionsContentProps) => (
   <View style={styles.topActionsContent}>
     <Pressable 
       style={({ pressed }) => [
@@ -225,16 +226,24 @@ export default function ProjectWebViewScreen() {
     navigation.goBack();
   }, [navigation]);
 
-  // 刷新预览的函数
-  const handleRefreshWebView = useCallback(() => {
-    console.log('🔄 [ProjectWebViewScreen] Refreshing preview...');
-    if (webPreviewRef.current) {
+  // 刷新预览的函数 - 根据项目类型刷新对应的预览组件
+  const handleRefreshPreview = useCallback(() => {
+    const projectType = project.type || 'miniapp';
+    console.log('🔄 [ProjectWebViewScreen] Refreshing preview...', { projectType });
+    
+    if (projectType === 'web' && webPreviewRef.current) {
       webPreviewRef.current.refresh();
-      console.log('✅ [ProjectWebViewScreen] Preview refresh triggered');
+      console.log('✅ [ProjectWebViewScreen] Web preview refresh triggered');
+    } else if (projectType === 'miniapp' && mobilePreviewRef.current) {
+      mobilePreviewRef.current.refresh();
+      console.log('✅ [ProjectWebViewScreen] Mobile preview refresh triggered');
     } else {
-      console.warn('⚠️ [ProjectWebViewScreen] Preview ref is not available');
+      console.warn('⚠️ [ProjectWebViewScreen] Preview ref is not available', { projectType });
     }
-  }, []);
+  }, [project.type]);
+
+  // 保持向后兼容的别名
+  const handleRefreshWebView = handleRefreshPreview;
 
   // 处理 Stripe 支付结果 -> 发送到 WebView 并清理状态
   const handleStripePaymentResult = useCallback((status: 'success' | 'cancel' | 'error', message?: string) => {
@@ -430,7 +439,8 @@ export default function ProjectWebViewScreen() {
             >
               <TopActionsContent 
                 handleShare={handleShare} 
-                handleGoHome={handleGoHome} 
+                handleGoHome={handleGoHome}
+                handleRefresh={handleRefreshPreview}
               />
             </LiquidGlassView>
           ) : (
@@ -443,7 +453,8 @@ export default function ProjectWebViewScreen() {
               />
               <TopActionsContent 
                 handleShare={handleShare} 
-                handleGoHome={handleGoHome} 
+                handleGoHome={handleGoHome}
+                handleRefresh={handleRefreshPreview}
               />
             </View>
           )}
