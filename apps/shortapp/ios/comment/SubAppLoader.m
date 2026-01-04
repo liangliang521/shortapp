@@ -8,13 +8,18 @@
 
 #import "SubAppLoader.h"
 #import "SubAppManifestResource.h"
+#import "SubAppMetadataResource.h"
 #import "SubAppLoadingProgress.h"
 #import <CommonCrypto/CommonDigest.h>
 #import <UIKit/UIKit.h>
 
 @interface SubAppLoader () <NSURLSessionDownloadDelegate>
-@property (nonatomic, strong) SubAppManifestResource *manifestResource;
+@property (nonatomic, strong, nullable) SubAppManifestResource *manifestResource;
+@property (nonatomic, strong, nullable) SubAppMetadataResource *metadataResource;
+@property (nonatomic, strong, nullable) NSURL *baseUrl; // Base URL for metadata format
+@property (nonatomic, assign) BOOL useMetadataFormat; // YES if using metadata.json, NO if using manifest.json
 @property (nonatomic, strong, nullable) NSDictionary *currentManifest;
+@property (nonatomic, strong, nullable) NSDictionary *currentMetadata;
 @property (nonatomic, strong, nullable) NSURL *bundleURL;
 @property (nonatomic, strong) NSMutableSet<NSString *> *downloadedAssets;
 @property (nonatomic, strong, nullable) NSTimer *updateCheckTimer;
@@ -32,7 +37,6 @@
 - (instancetype)initWithManifestUrl:(NSURL *)manifestUrl {
   if (self = [super init]) {
     _manifestUrl = manifestUrl;
-    _manifestResource = [[SubAppManifestResource alloc] initWithManifestUrl:manifestUrl];
     _downloadedAssets = [NSMutableSet set];
     _updateCheckPolicy = SubAppUpdateCheckPolicyAlways; // Default to Always for periodic checking
     _updateCheckInterval = 60.0; // 60 seconds
@@ -40,6 +44,25 @@
     _totalAssets = 0;
     _downloadedAssetsCount = 0;
     _assetDownloadTasks = [NSMutableDictionary dictionary];
+    
+    // Detect format: check if URL contains "metadata.json"
+    NSString *urlString = [manifestUrl absoluteString];
+    _useMetadataFormat = [urlString containsString:@"metadata.json"];
+    
+    if (_useMetadataFormat) {
+      // Use new metadata.json format
+      // Extract base URL (everything before /metadata.json)
+      NSRange metadataRange = [urlString rangeOfString:@"/metadata.json"];
+      NSString *baseUrlString = [urlString substringToIndex:metadataRange.location];
+      _baseUrl = [NSURL URLWithString:baseUrlString];
+      
+      _metadataResource = [[SubAppMetadataResource alloc] initWithMetadataUrl:manifestUrl baseUrl:_baseUrl];
+      NSLog(@"[SubAppLoader] Using metadata.json format with base URL: %@", _baseUrl);
+    } else {
+      // Use old manifest.json format
+      _manifestResource = [[SubAppManifestResource alloc] initWithManifestUrl:manifestUrl];
+      NSLog(@"[SubAppLoader] Using manifest.json format");
+    }
     
     // Create session with delegate for progress tracking
     NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
@@ -71,42 +94,14 @@
   // Clear cache for this project before loading (to ensure fresh data)
   [self _clearCache];
   
-  // Step 1: Load manifest
-  [self _notifyProgressWithStatus:@"正在下载 manifest..." done:@0 total:@1 type:@"manifest"];
+  // Step 1: Load manifest or metadata
+  NSString *resourceType = self.useMetadataFormat ? @"metadata" : @"manifest";
+  [self _notifyProgressWithStatus:[NSString stringWithFormat:@"正在下载 %@...", resourceType] done:@0 total:@1 type:resourceType];
   
-  [self.manifestResource loadManifestWithCompletion:^(NSDictionary * _Nullable manifest, NSError * _Nullable error) {
-    [self _notifyProgressWithStatus:@"Manifest 下载完成" done:@1 total:@1 type:@"manifest"];
-    
-    if (error) {
-      self.isLoading = NO;
-      if ([self.delegate respondsToSelector:@selector(subAppLoader:didFailWithError:)]) {
-        [self.delegate subAppLoader:self didFailWithError:error];
-      }
-      return;
-    }
-    
-    if (!manifest) {
-      self.isLoading = NO;
-      NSError *noManifestError = [NSError errorWithDomain:@"SubAppLoader"
-                                                      code:-1
-                                                  userInfo:@{NSLocalizedDescriptionKey: @"No manifest returned"}];
-      if ([self.delegate respondsToSelector:@selector(subAppLoader:didFailWithError:)]) {
-        [self.delegate subAppLoader:self didFailWithError:noManifestError];
-      }
-      return;
-    }
-    
-    self.currentManifest = manifest;
-    
-    if ([self.delegate respondsToSelector:@selector(subAppLoader:didLoadManifest:)]) {
-      [self.delegate subAppLoader:self didLoadManifest:manifest];
-    }
-    
-    // Step 2: Download bundle
-    [self _notifyProgressWithStatus:@"正在下载 bundle..." done:@0 total:@1 type:@"bundle"];
-    
-    [self _downloadBundleWithCompletion:^(NSURL * _Nullable bundleURL, NSError * _Nullable error) {
-      [self _notifyProgressWithStatus:@"Bundle 下载完成" done:@1 total:@1 type:@"bundle"];
+  if (self.useMetadataFormat) {
+    // Load metadata.json
+    [self.metadataResource loadMetadataWithCompletion:^(NSDictionary * _Nullable metadata, NSError * _Nullable error) {
+      [self _notifyProgressWithStatus:[NSString stringWithFormat:@"%@ 下载完成", resourceType] done:@1 total:@1 type:resourceType];
       
       if (error) {
         self.isLoading = NO;
@@ -116,16 +111,143 @@
         return;
       }
       
-      self.bundleURL = bundleURL;
-      
-      if ([self.delegate respondsToSelector:@selector(subAppLoader:didLoadBundle:)]) {
-        [self.delegate subAppLoader:self didLoadBundle:bundleURL];
+      if (!metadata) {
+        self.isLoading = NO;
+        NSError *noMetadataError = [NSError errorWithDomain:@"SubAppLoader"
+                                                       code:-1
+                                                   userInfo:@{NSLocalizedDescriptionKey: @"No metadata returned"}];
+        if ([self.delegate respondsToSelector:@selector(subAppLoader:didFailWithError:)]) {
+          [self.delegate subAppLoader:self didFailWithError:noMetadataError];
+        }
+        return;
       }
       
-      // Step 3: Download assets
-      NSArray *assets = [self.manifestResource assetsFromManifest:self.currentManifest];
-      self.totalAssets = assets ? assets.count : 0;
-      self.downloadedAssetsCount = 0;
+      self.currentMetadata = metadata;
+      
+      // Store as manifest for compatibility
+      self.currentManifest = metadata;
+      
+      if ([self.delegate respondsToSelector:@selector(subAppLoader:didLoadManifest:)]) {
+        [self.delegate subAppLoader:self didLoadManifest:metadata];
+      }
+      
+      // Step 2: Download bundle from metadata
+      [self _notifyProgressWithStatus:@"正在下载 bundle..." done:@0 total:@1 type:@"bundle"];
+      
+      NSURL *bundleUrl = [self.metadataResource bundleUrlFromMetadata:metadata baseUrl:self.baseUrl];
+      if (!bundleUrl) {
+        self.isLoading = NO;
+        NSError *noBundleError = [NSError errorWithDomain:@"SubAppLoader"
+                                                      code:-1
+                                                  userInfo:@{NSLocalizedDescriptionKey: @"No bundle URL found in metadata"}];
+        if ([self.delegate respondsToSelector:@selector(subAppLoader:didFailWithError:)]) {
+          [self.delegate subAppLoader:self didFailWithError:noBundleError];
+        }
+        return;
+      }
+      
+      [self _downloadBundleFromURL:bundleUrl withCompletion:^(NSURL * _Nullable bundleURL, NSError * _Nullable error) {
+        [self _notifyProgressWithStatus:@"Bundle 下载完成" done:@1 total:@1 type:@"bundle"];
+        
+        if (error) {
+          self.isLoading = NO;
+          if ([self.delegate respondsToSelector:@selector(subAppLoader:didFailWithError:)]) {
+            [self.delegate subAppLoader:self didFailWithError:error];
+          }
+          return;
+        }
+        
+        self.bundleURL = bundleURL;
+        
+        if ([self.delegate respondsToSelector:@selector(subAppLoader:didLoadBundle:)]) {
+          [self.delegate subAppLoader:self didLoadBundle:bundleURL];
+        }
+        
+        // Step 3: Download assets from metadata
+        NSArray *assets = [self.metadataResource assetsFromMetadata:metadata baseUrl:self.baseUrl];
+        self.totalAssets = assets ? assets.count : 0;
+        self.downloadedAssetsCount = 0;
+        
+        if (self.totalAssets > 0) {
+          [self _notifyProgressWithStatus:@"正在下载静态资源..." done:@0 total:@(self.totalAssets) type:@"assets"];
+        }
+        
+        [self _downloadAssetsWithCompletion:^(NSError * _Nullable error) {
+          if (self.totalAssets > 0) {
+            [self _notifyProgressWithStatus:@"静态资源下载完成" done:@(self.totalAssets) total:@(self.totalAssets) type:@"assets"];
+          }
+          
+          self.isLoading = NO;
+          
+          if (error) {
+            NSLog(@"[SubAppLoader] Some assets failed to download: %@", error);
+            // Continue anyway, assets are optional
+          }
+          
+          // Step 4: Start update checking if needed
+          [self _startUpdateCheckingIfNeeded];
+          
+          // Step 5: Notify completion
+          if ([self.delegate respondsToSelector:@selector(subAppLoaderDidFinishLoading:)]) {
+            [self.delegate subAppLoaderDidFinishLoading:self];
+          }
+        }];
+      }];
+    }];
+  } else {
+    // Load manifest.json (old format)
+    [self.manifestResource loadManifestWithCompletion:^(NSDictionary * _Nullable manifest, NSError * _Nullable error) {
+      [self _notifyProgressWithStatus:[NSString stringWithFormat:@"%@ 下载完成", resourceType] done:@1 total:@1 type:resourceType];
+      
+      if (error) {
+        self.isLoading = NO;
+        if ([self.delegate respondsToSelector:@selector(subAppLoader:didFailWithError:)]) {
+          [self.delegate subAppLoader:self didFailWithError:error];
+        }
+        return;
+      }
+      
+      if (!manifest) {
+        self.isLoading = NO;
+        NSError *noManifestError = [NSError errorWithDomain:@"SubAppLoader"
+                                                        code:-1
+                                                    userInfo:@{NSLocalizedDescriptionKey: @"No manifest returned"}];
+        if ([self.delegate respondsToSelector:@selector(subAppLoader:didFailWithError:)]) {
+          [self.delegate subAppLoader:self didFailWithError:noManifestError];
+        }
+        return;
+      }
+      
+      self.currentManifest = manifest;
+      
+      if ([self.delegate respondsToSelector:@selector(subAppLoader:didLoadManifest:)]) {
+        [self.delegate subAppLoader:self didLoadManifest:manifest];
+      }
+      
+      // Step 2: Download bundle
+      [self _notifyProgressWithStatus:@"正在下载 bundle..." done:@0 total:@1 type:@"bundle"];
+      
+      [self _downloadBundleWithCompletion:^(NSURL * _Nullable bundleURL, NSError * _Nullable error) {
+        [self _notifyProgressWithStatus:@"Bundle 下载完成" done:@1 total:@1 type:@"bundle"];
+        
+        if (error) {
+          self.isLoading = NO;
+          if ([self.delegate respondsToSelector:@selector(subAppLoader:didFailWithError:)]) {
+            [self.delegate subAppLoader:self didFailWithError:error];
+          }
+          return;
+        }
+        
+        self.bundleURL = bundleURL;
+        
+        if ([self.delegate respondsToSelector:@selector(subAppLoader:didLoadBundle:)]) {
+          [self.delegate subAppLoader:self didLoadBundle:bundleURL];
+        }
+        
+        // Step 3: Download assets
+        NSArray *assets = [self.manifestResource assetsFromManifest:self.currentManifest];
+        self.totalAssets = assets ? assets.count : 0;
+        self.downloadedAssetsCount = 0;
       
       if (self.totalAssets > 0) {
         [self _notifyProgressWithStatus:@"正在下载静态资源..." done:@0 total:@(self.totalAssets) type:@"assets"];
@@ -155,39 +277,22 @@
   }];
 }
 
-- (void)_downloadBundleWithCompletion:(void(^)(NSURL * _Nullable bundleURL, NSError * _Nullable error))completion {
-  NSURL *remoteBundleURL = [self.manifestResource bundleUrlFromManifest:self.currentManifest];
-  if (!remoteBundleURL) {
-    NSError *error = [NSError errorWithDomain:@"SubAppLoader"
-                                          code:-1
-                                      userInfo:@{NSLocalizedDescriptionKey: @"No bundle URL in manifest"}];
-    completion(nil, error);
-    return;
-  }
-  
+- (void)_downloadBundleFromURL:(NSURL *)bundleUrl withCompletion:(void(^)(NSURL * _Nullable bundleURL, NSError * _Nullable error))completion {
+  // Download bundle from the provided URL
   NSString *cachePath = [self _bundleCachePath];
   NSFileManager *fm = [NSFileManager defaultManager];
   
-  NSLog(@"[SubAppLoader] Bundle URL from manifest: %@", remoteBundleURL);
-  NSLog(@"[SubAppLoader] Bundle cache path: %@", cachePath);
-  
   // Always download fresh bundle (don't use cache to avoid loading wrong project)
-  // Remove old cache if exists
+  // Remove old bundle if exists
   if ([fm fileExistsAtPath:cachePath]) {
     NSError *removeError;
     [fm removeItemAtPath:cachePath error:&removeError];
     if (removeError) {
       NSLog(@"[SubAppLoader] Failed to remove cached bundle: %@", removeError);
-    } else {
-      NSLog(@"[SubAppLoader] Removed cached bundle: %@", cachePath);
     }
   }
   
-  // Download bundle with progress tracking
-  NSLog(@"[SubAppLoader] Downloading bundle from: %@", remoteBundleURL);
-  
-  // Use completion handler (progress will be tracked via delegate)
-  NSURLSessionDownloadTask *task = [self.downloadSession downloadTaskWithURL:remoteBundleURL
+  NSURLSessionDownloadTask *task = [self.downloadSession downloadTaskWithURL:bundleUrl
                                                              completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
     if (error) {
       completion(nil, error);
@@ -230,6 +335,90 @@
   
   self.bundleDownloadTask = task;
   [task resume];
+}
+
+- (void)_downloadBundleFromURL:(NSURL *)bundleUrl withCompletion:(void(^)(NSURL * _Nullable bundleURL, NSError * _Nullable error))completion {
+  // Download bundle from the provided URL
+  NSString *cachePath = [self _bundleCachePath];
+  NSFileManager *fm = [NSFileManager defaultManager];
+  
+  NSLog(@"[SubAppLoader] Bundle URL: %@", bundleUrl);
+  NSLog(@"[SubAppLoader] Bundle cache path: %@", cachePath);
+  
+  // Always download fresh bundle (don't use cache to avoid loading wrong project)
+  // Remove old bundle if exists
+  if ([fm fileExistsAtPath:cachePath]) {
+    NSError *removeError;
+    [fm removeItemAtPath:cachePath error:&removeError];
+    if (removeError) {
+      NSLog(@"[SubAppLoader] Failed to remove cached bundle: %@", removeError);
+    } else {
+      NSLog(@"[SubAppLoader] Removed cached bundle: %@", cachePath);
+    }
+  }
+  
+  // Download bundle with progress tracking
+  NSLog(@"[SubAppLoader] Downloading bundle from: %@", bundleUrl);
+  
+  // Use completion handler (progress will be tracked via delegate)
+  NSURLSessionDownloadTask *task = [self.downloadSession downloadTaskWithURL:bundleUrl
+                                                             completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
+    if (error) {
+      completion(nil, error);
+      return;
+    }
+    
+    // Validate response
+    if ([response isKindOfClass:[NSHTTPURLResponse class]]) {
+      NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+      if (httpResponse.statusCode != 200) {
+        NSError *httpError = [NSError errorWithDomain:@"SubAppLoader"
+                                                  code:httpResponse.statusCode
+                                              userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"HTTP %ld", (long)httpResponse.statusCode]}];
+        completion(nil, httpError);
+        return;
+      }
+    }
+    
+    // Move to cache location
+    NSString *cacheDir = [cachePath stringByDeletingLastPathComponent];
+    if (![fm fileExistsAtPath:cacheDir]) {
+      NSError *dirError;
+      [fm createDirectoryAtPath:cacheDir withIntermediateDirectories:YES attributes:nil error:&dirError];
+      if (dirError) {
+        completion(nil, dirError);
+        return;
+      }
+    }
+    
+    NSError *moveError;
+    [fm moveItemAtURL:location toURL:[NSURL fileURLWithPath:cachePath] error:&moveError];
+    if (moveError) {
+      completion(nil, moveError);
+      return;
+    }
+    
+    NSLog(@"[SubAppLoader] Bundle downloaded to: %@", cachePath);
+    completion([NSURL fileURLWithPath:cachePath], nil);
+  }];
+  
+  self.bundleDownloadTask = task;
+  [task resume];
+}
+
+- (void)_downloadBundleWithCompletion:(void(^)(NSURL * _Nullable bundleURL, NSError * _Nullable error))completion {
+  // Extract bundle URL from manifest (old format)
+  NSURL *bundleUrl = [self.manifestResource bundleUrlFromManifest:self.currentManifest];
+  if (!bundleUrl) {
+    NSError *noBundleError = [NSError errorWithDomain:@"SubAppLoader"
+                                                  code:-1
+                                              userInfo:@{NSLocalizedDescriptionKey: @"No bundle URL found in manifest"}];
+    completion(nil, noBundleError);
+    return;
+  }
+  
+  // Use the common download method
+  [self _downloadBundleFromURL:bundleUrl withCompletion:completion];
 }
 
 - (void)_downloadAssetsWithCompletion:(void(^)(NSError * _Nullable error))completion {
