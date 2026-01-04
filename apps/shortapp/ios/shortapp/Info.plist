@@ -72,5 +72,7 @@
     <string>Light</string>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
+    <key>NSUserTrackingUsageDescription</key>
+    <string>We use tracking to provide you with personalized content and improve our services. Your data helps us enhance your app experience.</string>
   </dict>
 </plist>

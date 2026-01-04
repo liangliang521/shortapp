@@ -21,9 +21,6 @@ NS_ASSUME_NONNULL_BEGIN
 // Get current sub-app root view for embedding
 + (UIView * _Nullable)currentSubAppRootView;
 
-// Notify about sub-app errors (called by SubAppExceptionHandler)
-- (void)notifySubAppError:(NSString *)errorMessage isFatal:(BOOL)isFatal;
-
 @end
 
 NS_ASSUME_NONNULL_END
