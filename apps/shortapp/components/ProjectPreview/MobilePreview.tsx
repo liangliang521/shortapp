@@ -12,9 +12,14 @@ import {
   Text,
   Platform,
   requireNativeComponent,
+  AppState,
+  Pressable,
+  TouchableOpacity,
 } from 'react-native';
 import SubAppLauncherService, { LoadingProgress } from '../../src/services/SubAppLauncher';
 import { normalizeExpUrlToHttp } from '../../src/utils/url';
+import { SubAppErrorBoundary } from './SubAppErrorBoundary';
+import { ChevronBackIcon } from '../icons/SvgIcons';
 
 // Native view component for sub-app container
 const SubAppContainerView = requireNativeComponent<any>('SubAppContainerView');
@@ -26,6 +31,7 @@ export interface MobilePreviewProps {
   onLoadStart?: () => void;
   onLoadEnd?: () => void;
   onError?: (error: string) => void;
+  onBack?: () => void;
 }
 
 export interface MobilePreviewRef {
@@ -33,7 +39,7 @@ export interface MobilePreviewRef {
 }
 
 // TODO: 测试用固定地址，后续需要移除
-const TEST_MANIFEST_URL = 'http://127.0.0.1:8081/apps/text-sample/manifest.json';
+const TEST_MANIFEST_URL = 'https://shortapp.dev/clip/68eee66720f64b3b96d6ae1739c47cc2/metadata.json';
 
 const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
   previewUrl,
@@ -42,6 +48,7 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
   onLoadStart: onLoadStartProp,
   onLoadEnd: onLoadEndProp,
   onError: onErrorProp,
+  onBack,
 }, ref) => {
   const [loadingProgress, setLoadingProgress] = useState<LoadingProgress | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -80,6 +87,71 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
       unsubscribe();
     };
   }, [onLoadEndProp]);
+
+  // 监听全局错误（捕获子 App 的未处理错误）
+  useEffect(() => {
+    // 设置全局错误处理器来捕获子 App 的错误
+    // @ts-ignore - ErrorUtils is a global object in React Native
+    const ErrorUtils = (global as any).ErrorUtils;
+    if (!ErrorUtils) {
+      console.warn('[MobilePreview] ErrorUtils not available');
+      return;
+    }
+    
+    const originalErrorHandler = ErrorUtils.getGlobalHandler?.();
+    
+    if (ErrorUtils.setGlobalHandler) {
+      ErrorUtils.setGlobalHandler((error: Error, isFatal?: boolean) => {
+        // 检查错误是否来自子 App（通过错误堆栈和消息判断）
+        const errorStack = error.stack || '';
+        const errorMessage = error.message || '';
+        
+        // 判断是否为子 App 错误
+        const isSubAppError = 
+          errorStack.includes('SubApp') || 
+          errorStack.includes('sub-app') ||
+          errorMessage.includes('ExpoLinking') ||
+          errorMessage.includes('scheme') ||
+          errorMessage.includes('Cannot make a deep link') ||
+          errorMessage.includes('standalone app') ||
+          errorMessage.includes('no custom scheme');
+        
+        if (isSubAppError) {
+          console.error('❌ [MobilePreview] Caught sub-app error:', error);
+          
+          // 生成更有价值的错误信息
+          let userFriendlyMessage = '子 App 加载失败';
+          if (errorMessage.includes('scheme') || errorMessage.includes('Cannot make a deep link')) {
+            userFriendlyMessage = '子 App 配置错误：缺少深链接配置。这通常不影响核心功能，但深链接功能可能无法使用。';
+          } else if (errorMessage.includes('ExpoLinking')) {
+            userFriendlyMessage = '子 App 链接模块错误：' + errorMessage;
+          } else {
+            userFriendlyMessage = `子 App 运行时错误：${errorMessage}`;
+          }
+          
+          setError(userFriendlyMessage);
+          setIsLoading(false);
+          setSubAppReady(false);
+          onErrorProp?.(userFriendlyMessage);
+          
+          // 不调用原始错误处理器，防止应用崩溃
+          return;
+        }
+        
+        // 对于其他错误，使用原始错误处理器
+        if (originalErrorHandler) {
+          originalErrorHandler(error, isFatal);
+        }
+      });
+    }
+
+    return () => {
+      // 恢复原始错误处理器
+      if (ErrorUtils.setGlobalHandler && originalErrorHandler) {
+        ErrorUtils.setGlobalHandler(originalErrorHandler);
+      }
+    };
+  }, [onErrorProp]);
 
   // 打开子 App
   const openSubApp = useCallback(async () => {
@@ -201,14 +273,25 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
   }
 
   return (
-    <View style={styles.container}>
-      {/* 子 App 容器 - 核心预览区域 */}
-      <View style={styles.subAppContainer}>
-        <SubAppContainerView 
-          ref={containerRef}
-          style={styles.subAppView}
-        />
-      </View>
+    <SubAppErrorBoundary
+      onError={(error, errorInfo) => {
+        console.error('❌ [MobilePreview] ErrorBoundary caught error:', error);
+        const errorMessage = error.message || '子 App 加载错误';
+        setError(errorMessage);
+        setIsLoading(false);
+        setSubAppReady(false);
+        onErrorProp?.(errorMessage);
+      }}
+      onBack={onBack}
+    >
+      <View style={styles.container}>
+        {/* 子 App 容器 - 核心预览区域 */}
+        <View style={styles.subAppContainer}>
+          <SubAppContainerView 
+            ref={containerRef}
+            style={styles.subAppView}
+          />
+        </View>
 
       {/* 全屏下载覆盖层 - 显示在预览页面之上 */}
       {showLoadingOverlay && (
@@ -244,13 +327,44 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
       {/* 错误提示覆盖层 */}
       {error && (
         <View style={styles.errorOverlay}>
-          <Text style={styles.errorText}>{error}</Text>
-          <Text style={styles.errorSubtext}>
-            Please check your network connection and try again.
-          </Text>
+          {/* 返回按钮 */}
+          {onBack && (
+            <View style={styles.errorHeader}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.errorBackButton,
+                  pressed && styles.errorBackButtonPressed
+                ]}
+                onPress={onBack}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <ChevronBackIcon size={24} color="#FFFFFF" />
+              </Pressable>
+            </View>
+          )}
+          
+          <View style={styles.errorContent}>
+            <Text style={styles.errorText}>{error}</Text>
+            <Text style={styles.errorSubtext}>
+              {error.includes('深链接') || error.includes('scheme') 
+                ? '这是子 App 的配置问题，不影响预览功能。您可以返回或刷新重试。'
+                : '请检查网络连接或联系开发者。'}
+            </Text>
+            
+            {/* 返回按钮 */}
+            {onBack && (
+              <TouchableOpacity
+                style={styles.errorBackButtonLarge}
+                onPress={onBack}
+              >
+                <Text style={styles.errorBackButtonText}>返回</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       )}
-    </View>
+      </View>
+    </SubAppErrorBoundary>
   );
 });
 
@@ -321,10 +435,30 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    zIndex: 1001,
+  },
+  errorHeader: {
+    paddingTop: 50,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  errorBackButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  errorBackButtonPressed: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    opacity: 0.8,
+  },
+  errorContent: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
-    zIndex: 1001,
   },
   errorText: {
     fontSize: 18,
@@ -337,6 +471,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: 'rgba(255, 255, 255, 0.7)',
     textAlign: 'center',
+    marginBottom: 24,
+  },
+  errorBackButtonLarge: {
+    marginTop: 16,
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    backgroundColor: '#007AFF',
+    borderRadius: 8,
+  },
+  errorBackButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   // 错误容器（用于非覆盖层场景）
   errorContainer: {

@@ -17,6 +17,7 @@
 		3E8F9D2D2F06708D00F28448 /* SubAppLauncher.m in Sources */ = {isa = PBXBuildFile; fileRef = 3E8F9D1E2F06708D00F28448 /* SubAppLauncher.m */; };
 		3E8F9D2E2F06708D00F28448 /* SubAppContainerView.m in Sources */ = {isa = PBXBuildFile; fileRef = 3E8F9D1B2F06708D00F28448 /* SubAppContainerView.m */; };
 		3E8F9D2F2F06708D00F28448 /* SubAppLoadingProgress.m in Sources */ = {isa = PBXBuildFile; fileRef = 3E8F9D222F06708D00F28448 /* SubAppLoadingProgress.m */; };
+		3E8F9D352F0A5C2500F28448 /* SubAppMetadataResource.m in Sources */ = {isa = PBXBuildFile; fileRef = 3E8F9D342F0A5C2500F28448 /* SubAppMetadataResource.m */; };
 		433CE8FBEAF550D8C80D3379 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E79CAD2E08023476303081EB /* ExpoModulesProvider.swift */; };
 		597DD86EB6EB1111B178FAF9 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 46C0106FF5057DF086E8DF34 /* PrivacyInfo.xcprivacy */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
@@ -42,6 +43,8 @@
 		3E8F9D242F06708D00F28448 /* SubAppManifestResource.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SubAppManifestResource.m; sourceTree = "<group>"; };
 		3E8F9D252F06708D00F28448 /* SubAppUpdateManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SubAppUpdateManager.h; sourceTree = "<group>"; };
 		3E8F9D262F06708D00F28448 /* SubAppUpdateManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SubAppUpdateManager.m; sourceTree = "<group>"; };
+		3E8F9D332F0A5C2500F28448 /* SubAppMetadataResource.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SubAppMetadataResource.h; sourceTree = "<group>"; };
+		3E8F9D342F0A5C2500F28448 /* SubAppMetadataResource.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SubAppMetadataResource.m; sourceTree = "<group>"; };
 		46C0106FF5057DF086E8DF34 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = shortapp/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		8D37E5CEDEF77D2BBB9526D4 /* libPods-shortapp.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-shortapp.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = shortapp/SplashScreen.storyboard; sourceTree = "<group>"; };
@@ -113,6 +116,8 @@
 				3E8F9D222F06708D00F28448 /* SubAppLoadingProgress.m */,
 				3E8F9D232F06708D00F28448 /* SubAppManifestResource.h */,
 				3E8F9D242F06708D00F28448 /* SubAppManifestResource.m */,
+				3E8F9D332F0A5C2500F28448 /* SubAppMetadataResource.h */,
+				3E8F9D342F0A5C2500F28448 /* SubAppMetadataResource.m */,
 				3E8F9D252F06708D00F28448 /* SubAppUpdateManager.h */,
 				3E8F9D262F06708D00F28448 /* SubAppUpdateManager.m */,
 			);
@@ -395,6 +400,7 @@
 				3E8F9D2A2F06708D00F28448 /* SubAppUpdateManager.m in Sources */,
 				3E8F9D2B2F06708D00F28448 /* SubAppManifestResource.m in Sources */,
 				3E8F9D2C2F06708D00F28448 /* AppFactoryProvider.swift in Sources */,
+				3E8F9D352F0A5C2500F28448 /* SubAppMetadataResource.m in Sources */,
 				3E8F9D2D2F06708D00F28448 /* SubAppLauncher.m in Sources */,
 				3E8F9D2E2F06708D00F28448 /* SubAppContainerView.m in Sources */,
 				3E8F9D2F2F06708D00F28448 /* SubAppLoadingProgress.m in Sources */,

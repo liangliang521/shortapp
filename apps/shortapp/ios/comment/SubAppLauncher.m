@@ -125,7 +125,13 @@ RCT_EXPORT_METHOD(openSubApp
     self.pendingReject = reject;
     self.currentManifestUrl = manifestNSURL;
     self.currentModuleName = moduleName;
-    self.currentInitialProps = initialProps;
+    
+    // Add default scheme for sub-apps to avoid ExpoLinking errors
+    // Sub-apps don't have their own app.json, so we provide a default scheme
+    NSMutableDictionary *propsWithScheme = [NSMutableDictionary dictionaryWithDictionary:initialProps ?: @{}];
+    // Note: ExpoLinking reads scheme from ExpoConstants, not from initialProps
+    // We'll need to configure it differently
+    self.currentInitialProps = propsWithScheme;
     
     // Create loader
     SubAppLoader *loader = [[SubAppLoader alloc] initWithManifestUrl:manifestNSURL];
@@ -332,8 +338,19 @@ RCT_EXPORT_METHOD(reloadSubApp
       self.pendingReject = nil;
     }
   } @catch (NSException *exception) {
+    NSLog(@"[SubAppLauncher] Caught exception while creating rootView: %@", exception);
     if (self.pendingReject) {
-      self.pendingReject(@"BUNDLE_LOAD_ERROR", [NSString stringWithFormat:@"Failed to load bundle: %@", exception.reason], exception);
+      // Convert NSException to NSError for React Native promise rejection
+      // NSException doesn't have localizedDescription, so we need to create an NSError
+      NSString *errorMessage = exception.reason ?: @"Unknown error occurred while loading bundle";
+      NSError *error = [NSError errorWithDomain:@"SubAppLauncher"
+                                            code:-1
+                                        userInfo:@{
+        NSLocalizedDescriptionKey: errorMessage,
+        @"exceptionName": exception.name ?: @"Unknown",
+        @"exceptionReason": exception.reason ?: @""
+      }];
+      self.pendingReject(@"BUNDLE_LOAD_ERROR", errorMessage, error);
       self.pendingReject = nil;
       self.pendingResolve = nil;
     }

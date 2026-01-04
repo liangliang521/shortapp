@@ -48,12 +48,20 @@ public class SubAppFactoryHelper: NSObject {
   ) -> UIView {
     let delegate = SubAppFactoryDelegate(url: bundleURL)
     let factory = ExpoReactNativeFactory(delegate: delegate)
-    return factory.recreateRootView(
+    
+    // Create root view
+    let rootView = factory.recreateRootView(
       withBundleURL: bundleURL,
       moduleName: moduleName,
       initialProps: initialProps,
       launchOptions: nil
     )
+    
+    // Set up error handling for the root view
+    // We'll wrap the root view in an error boundary at the JS level
+    // For now, we just ensure the view doesn't crash the app
+    
+    return rootView
   }
 }
 

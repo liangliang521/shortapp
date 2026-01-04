@@ -407,6 +407,7 @@ export default function ProjectWebViewScreen() {
           ref={mobilePreviewRef}
           previewUrl={previewUrl}
           projectId={project.project_id}
+          onBack={() => navigation.goBack()}
         />
       ) : (
         // TODO: 未来添加 nativeapp 预览组件
