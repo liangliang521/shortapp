@@ -39,7 +39,7 @@ export interface MobilePreviewRef {
 }
 
 // TODO: 测试用固定地址，后续需要移除
-const TEST_MANIFEST_URL = 'https://shortapp.dev/clip/68eee66720f64b3b96d6ae1739c47cc2/metadata.json';
+const TEST_MANIFEST_URL = 'https://bc5ac454-31fa-4403-8795-55917b1f579f.shortapp.space/metadata.json';
 
 const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
   previewUrl,
@@ -88,9 +88,34 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
     };
   }, [onLoadEndProp]);
 
-  // 监听全局错误（捕获子 App 的未处理错误）
+  // 监听原生错误处理器发送的错误事件（主要错误捕获方式）
   useEffect(() => {
-    // 设置全局错误处理器来捕获子 App 的错误
+    const unsubscribe = SubAppLauncherService.addSubAppErrorListener((errorData) => {
+      console.error('❌ [MobilePreview] SubAppExceptionHandler reported error:', errorData);
+      
+      // 生成更有价值的错误信息
+      let userFriendlyMessage = errorData.message || '子 App 运行时错误';
+      if (errorData.message.includes('scheme') || errorData.message.includes('Cannot make a deep link')) {
+        userFriendlyMessage = '子 App 配置错误：缺少深链接配置。这通常不影响核心功能，但深链接功能可能无法使用。';
+      } else if (errorData.message.includes('ExpoLinking')) {
+        userFriendlyMessage = '子 App 链接模块错误：' + errorData.message;
+      }
+      
+      setError(userFriendlyMessage);
+      setIsLoading(false);
+      setSubAppReady(false);
+      setLoadingProgress(null);
+      onErrorProp?.(userFriendlyMessage);
+    });
+    
+    return () => {
+      unsubscribe();
+    };
+  }, [onErrorProp]);
+
+  // 监听全局错误（作为备用错误捕获方式）
+  useEffect(() => {
+    // 设置全局错误处理器来捕获子 App 的错误（作为备用）
     // @ts-ignore - ErrorUtils is a global object in React Native
     const ErrorUtils = (global as any).ErrorUtils;
     if (!ErrorUtils) {
@@ -117,7 +142,7 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
           errorMessage.includes('no custom scheme');
         
         if (isSubAppError) {
-          console.error('❌ [MobilePreview] Caught sub-app error:', error);
+          console.error('❌ [MobilePreview] Caught sub-app error via global handler:', error);
           
           // 生成更有价值的错误信息
           let userFriendlyMessage = '子 App 加载失败';

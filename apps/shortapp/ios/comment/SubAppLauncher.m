@@ -7,6 +7,7 @@
 
 #import "SubAppLauncher.h"
 #import "SubAppLoader.h"
+#import "SubAppExceptionHandler.h"
 #import <UIKit/UIKit.h>
 #import <React/RCTBridge.h>
 #import <React/RCTUtils.h>
@@ -22,6 +23,10 @@
 @property (nonatomic, strong, nullable) RCTPromiseResolveBlock pendingResolve;
 @property (nonatomic, strong, nullable) RCTPromiseRejectBlock pendingReject;
 @property (nonatomic, strong, nullable) UIView *currentSubAppRootView;
+@property (nonatomic, strong, nullable) SubAppExceptionHandler *exceptionHandler;
+
+// Private method to set up error handler
+- (void)_setupErrorHandlerForRootView:(UIView *)rootView;
 @end
 
 
@@ -92,7 +97,46 @@ RCT_EXPORT_MODULE(SubAppLauncher);
 
 - (NSArray<NSString *> *)supportedEvents
 {
-  return @[@"onLoadingProgress", @"onManifestProgress", @"onBundleProgress", @"onAssetsProgress", @"onSubAppReady", @"onUpdateDetected"];
+  return @[@"onLoadingProgress", @"onManifestProgress", @"onBundleProgress", @"onAssetsProgress", @"onSubAppReady", @"onUpdateDetected", @"onSubAppError"];
+}
+
+- (void)notifySubAppError:(NSString *)errorMessage isFatal:(BOOL)isFatal
+{
+  NSLog(@"[SubAppLauncher] Notifying sub-app error: %@ (fatal: %@)", errorMessage, isFatal ? @"YES" : @"NO");
+  
+  // Send error event to React Native
+  [self sendEventWithName:@"onSubAppError" body:@{
+    @"message": errorMessage ?: @"Unknown error",
+    @"isFatal": @(isFatal)
+  }];
+}
+
+- (void)_setupErrorHandlerForRootView:(UIView *)rootView
+{
+  // Try to access the bridge from the rootView
+  // In new architecture, the rootView might be an RCTSurfaceHostingProxyRootView
+  // which has a bridge property
+  @try {
+    // Try to get bridge using KVC (Key-Value Coding) or selector
+    if ([rootView respondsToSelector:@selector(bridge)]) {
+      RCTBridge *bridge = [rootView performSelector:@selector(bridge)];
+      if (bridge && self.exceptionHandler) {
+        // Try to get RCTExceptionsManager and set delegate
+        id exceptionsManager = [bridge moduleForName:@"RCTExceptionsManager"];
+        if (exceptionsManager && [exceptionsManager respondsToSelector:@selector(setDelegate:)]) {
+          [exceptionsManager performSelector:@selector(setDelegate:) withObject:self.exceptionHandler];
+          NSLog(@"[SubAppLauncher] Successfully set exception handler delegate");
+        } else {
+          NSLog(@"[SubAppLauncher] Could not set exception handler delegate (exceptionsManager not found or doesn't support setDelegate:)");
+        }
+      }
+    } else {
+      NSLog(@"[SubAppLauncher] RootView does not respond to bridge selector");
+    }
+  } @catch (NSException *exception) {
+    NSLog(@"[SubAppLauncher] Failed to set up error handler: %@", exception);
+    // Continue anyway - errors will still be caught via global error handler
+  }
 }
 
 RCT_EXPORT_METHOD(openSubApp
@@ -260,11 +304,15 @@ RCT_EXPORT_METHOD(reloadSubApp
   
   NSLog(@"[SubAppLauncher] Creating rootView with bundleURL: %@, moduleName: %@", bundleURL, self.currentModuleName);
   
+  // Create error handler for this sub-app
+  self.exceptionHandler = [[SubAppExceptionHandler alloc] initWithSubAppLauncher:self];
+  
   // Build rootView using a fresh factory
   @try {
     UIView *rootView = [SubAppFactoryHelper makeRootViewWithNewFactory:bundleURL
                                                             moduleName:self.currentModuleName
-                                                         initialProps:self.currentInitialProps];
+                                                         initialProps:self.currentInitialProps
+                                                      exceptionHandler:self.exceptionHandler];
     if (!rootView) {
       NSLog(@"[SubAppLauncher] ERROR: Failed to create rootView from bundle");
       if (self.pendingReject) {
@@ -288,6 +336,11 @@ RCT_EXPORT_METHOD(reloadSubApp
     
     NSLog(@"[SubAppLauncher] Stored currentSubAppRootView: %@", self.currentSubAppRootView);
     NSLog(@"[SubAppLauncher] Loaded bundle=%@ module=%@", bundleURL, self.currentModuleName);
+    
+    // Try to set up error handler for the sub-app's React Native instance
+    // In new architecture, we need to access the bridge/host from the rootView
+    // Note: This is a best-effort attempt; errors may still be caught via RCTExceptionsManagerDelegate
+    [self _setupErrorHandlerForRootView:rootView];
     
     // Send event to JS to notify that sub-app is ready
     NSLog(@"[SubAppLauncher] Sending onSubAppReady event to JS");

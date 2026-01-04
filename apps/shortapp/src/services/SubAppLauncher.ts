@@ -74,6 +74,11 @@ interface SubAppLauncherInterface {
    * 监听更新检测事件
    */
   addUpdateDetectedListener(callback: (data: { hasUpdate: boolean; manifest: any; manifestId: string }) => void): () => void;
+  
+  /**
+   * 监听子 App 错误事件（来自原生错误处理器）
+   */
+  addSubAppErrorListener(callback: (errorData: { message: string; isFatal: boolean }) => void): () => void;
 }
 
 export const SubAppLauncherService: SubAppLauncherInterface = {
@@ -187,6 +192,15 @@ export const SubAppLauncherService: SubAppLauncherInterface = {
     }
     
     const subscription = subAppLauncherEmitter.addListener('onUpdateDetected', callback);
+    return () => subscription.remove();
+  },
+  
+  addSubAppErrorListener: (callback: (errorData: { message: string; isFatal: boolean }) => void) => {
+    if (!SubAppLauncher) {
+      return () => {};
+    }
+    
+    const subscription = subAppLauncherEmitter.addListener('onSubAppError', callback);
     return () => subscription.remove();
   },
 };
