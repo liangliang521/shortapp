@@ -74,5 +74,9 @@
     <false/>
     <key>NSUserTrackingUsageDescription</key>
     <string>We use tracking to provide you with personalized content and improve our services. Your data helps us enhance your app experience.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>We need access to your camera to take photos and record videos.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>We need access to your microphone to record audio in videos.</string>
   </dict>
 </plist>
