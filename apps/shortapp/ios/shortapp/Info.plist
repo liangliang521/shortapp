@@ -19,7 +19,7 @@
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>1.0.1</string>
     <key>CFBundleSignature</key>
     <string>????</string>
     <key>CFBundleURLTypes</key>
@@ -78,5 +78,7 @@
     <string>We need access to your camera to take photos and record videos.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>We need access to your microphone to record audio in videos.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>We need access to your photo library to select and save images for your projects.</string>
   </dict>
 </plist>
