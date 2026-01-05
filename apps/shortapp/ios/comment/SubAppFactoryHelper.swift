@@ -38,6 +38,28 @@ public class SubAppFactoryHelper: NSObject {
     }
     public override func bundleURL() -> URL? { url }
     public override func sourceURL(for bridge: RCTBridge) -> URL? { url }
+    
+    // 捕获子 App 尝试使用但未安装的原生模块
+    public override func bridge(_ bridge: RCTBridge, didNotFindModule moduleName: String) -> Bool {
+      NSLog("[SubAppFactoryDelegate] Module not found: %@", moduleName)
+      
+      // 发送错误通知到主 App
+      let errorInfo: [String: Any] = [
+        "moduleName": moduleName,
+        "message": "Cannot find native module '\(moduleName)'",
+        "isFatal": false
+      ]
+      
+      NotificationCenter.default.post(
+        name: NSNotification.Name("SubAppModuleNotFound"),
+        object: nil,
+        userInfo: errorInfo
+      )
+      
+      // 返回 NO 表示模块确实不存在，停止查找
+      // 这样可以避免重复查找，同时让 JS 层抛出错误
+      return false
+    }
   }
 
   @objc(makeRootViewWithNewFactory:moduleName:initialProps:)

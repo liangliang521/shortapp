@@ -22,6 +22,16 @@
 @property (nonatomic, strong, nullable) RCTPromiseResolveBlock pendingResolve;
 @property (nonatomic, strong, nullable) RCTPromiseRejectBlock pendingReject;
 @property (nonatomic, strong, nullable) UIView *currentSubAppRootView;
+
+// Private helper methods for subAppLoaderDidFinishLoading
+- (NSURL *)_validateLoaderAndBundleURL:(SubAppLoader *)loader;
+- (UIView *)_createRootViewWithBundleURL:(NSURL *)bundleURL;
+- (void)_configureRootView:(UIView *)rootView;
+- (void)_sendSubAppReadyEvent;
+- (void)_postRootViewReadyNotification:(UIView *)rootView;
+- (void)_resolvePendingPromise;
+- (void)_handleRootViewCreationError:(NSError *)error;
+- (void)_handleSubAppModuleNotFound:(NSNotification *)notification;
 @end
 
 
@@ -51,8 +61,18 @@ static SubAppLauncher *g_sharedInstance = nil;
     // Store this instance as the shared instance
     g_sharedInstance = self;
     NSLog(@"[SubAppLauncher] Module initialized, stored as sharedInstance: %@", self);
+    
+    // 监听子 App 模块未找到的通知
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(_handleSubAppModuleNotFound:)
+                                                 name:@"SubAppModuleNotFound"
+                                               object:nil];
   }
   return self;
+}
+
+- (void)dealloc {
+  [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 + (UIView *)currentSubAppRootView {
@@ -92,7 +112,7 @@ RCT_EXPORT_MODULE(SubAppLauncher);
 
 - (NSArray<NSString *> *)supportedEvents
 {
-  return @[@"onLoadingProgress", @"onManifestProgress", @"onBundleProgress", @"onAssetsProgress", @"onSubAppReady", @"onUpdateDetected"];
+  return @[@"onLoadingProgress", @"onManifestProgress", @"onBundleProgress", @"onAssetsProgress", @"onSubAppReady", @"onUpdateDetected", @"onSubAppError"];
 }
 
 RCT_EXPORT_METHOD(openSubApp
@@ -241,8 +261,56 @@ RCT_EXPORT_METHOD(reloadSubApp
 #pragma mark - SubAppLoaderDelegate
 
 - (void)subAppLoaderDidFinishLoading:(SubAppLoader *)loader {
+  // Validate loader and bundle URL
+  NSURL *bundleURL = [self _validateLoaderAndBundleURL:loader];
+  if (!bundleURL) {
+    return;
+  }
+  
+  NSLog(@"[SubAppLauncher] Creating rootView with bundleURL: %@, moduleName: %@", bundleURL, self.currentModuleName);
+  
+  // Build rootView using a fresh factory
+  @try {
+    UIView *rootView = [self _createRootViewWithBundleURL:bundleURL];
+    if (!rootView) {
+      NSError *error = [NSError errorWithDomain:@"SubAppLauncher"
+                                            code:-1
+                                        userInfo:@{NSLocalizedDescriptionKey: @"Failed to create rootView from bundle"}];
+      [self _handleRootViewCreationError:error];
+      return;
+    }
+    
+    // Configure and store root view
+    [self _configureRootView:rootView];
+    self.currentSubAppRootView = rootView;
+    
+    NSLog(@"[SubAppLauncher] Loaded bundle=%@ module=%@", bundleURL, self.currentModuleName);
+    
+    // Send events and notifications
+    [self _sendSubAppReadyEvent];
+    [self _postRootViewReadyNotification:rootView];
+    
+    // Resolve promise
+    [self _resolvePendingPromise];
+  } @catch (NSException *exception) {
+    NSLog(@"[SubAppLauncher] Caught exception while creating rootView: %@", exception);
+    NSString *errorMessage = exception.reason ?: @"Unknown error occurred while loading bundle";
+    NSError *error = [NSError errorWithDomain:@"SubAppLauncher"
+                                          code:-1
+                                      userInfo:@{
+      NSLocalizedDescriptionKey: errorMessage,
+      @"exceptionName": exception.name ?: @"Unknown",
+      @"exceptionReason": exception.reason ?: @""
+    }];
+    [self _handleRootViewCreationError:error];
+  }
+}
+
+#pragma mark - Private Helper Methods
+
+- (NSURL *)_validateLoaderAndBundleURL:(SubAppLoader *)loader {
   if (loader != self.currentLoader) {
-    return; // Ignore if loader changed
+    return nil; // Ignore if loader changed
   }
   
   NSURL *bundleURL = loader.bundleURL;
@@ -255,105 +323,94 @@ RCT_EXPORT_METHOD(reloadSubApp
       self.pendingReject = nil;
       self.pendingResolve = nil;
     }
-    return;
+    return nil;
   }
   
-  NSLog(@"[SubAppLauncher] Creating rootView with bundleURL: %@, moduleName: %@", bundleURL, self.currentModuleName);
+  return bundleURL;
+}
+
+- (UIView *)_createRootViewWithBundleURL:(NSURL *)bundleURL {
+  return [SubAppFactoryHelper makeRootViewWithNewFactory:bundleURL
+                                              moduleName:self.currentModuleName
+                                           initialProps:self.currentInitialProps];
+}
+
+- (void)_configureRootView:(UIView *)rootView {
+  rootView.translatesAutoresizingMaskIntoConstraints = YES;
+  // Set background color for debugging (purple - sub-app root view)
+  rootView.backgroundColor = [UIColor colorWithRed:0.9 green:0.8 blue:1.0 alpha:1.0];
   
-  // Build rootView using a fresh factory
-  @try {
-    UIView *rootView = [SubAppFactoryHelper makeRootViewWithNewFactory:bundleURL
-                                                            moduleName:self.currentModuleName
-                                                         initialProps:self.currentInitialProps];
-    if (!rootView) {
-      NSLog(@"[SubAppLauncher] ERROR: Failed to create rootView from bundle");
-      if (self.pendingReject) {
-        self.pendingReject(@"ROOTVIEW_NIL", @"Failed to create rootView from bundle", nil);
-        self.pendingReject = nil;
-        self.pendingResolve = nil;
-      }
-      return;
-    }
-    rootView.translatesAutoresizingMaskIntoConstraints = YES;
-    // Set background color for debugging (purple - sub-app root view)
-    rootView.backgroundColor = [UIColor colorWithRed:0.9 green:0.8 blue:1.0 alpha:1.0];
-    
-    NSLog(@"[SubAppLauncher] RootView created successfully:");
-    NSLog(@"[SubAppLauncher] - rootView: %@", rootView);
-    NSLog(@"[SubAppLauncher] - rootView.frame: %@", NSStringFromCGRect(rootView.frame));
-    NSLog(@"[SubAppLauncher] - rootView.backgroundColor: %@", rootView.backgroundColor);
-    
-    // Store the rootView for embedding (not presenting as modal)
-    self.currentSubAppRootView = rootView;
-    
-    NSLog(@"[SubAppLauncher] Stored currentSubAppRootView: %@", self.currentSubAppRootView);
-    NSLog(@"[SubAppLauncher] Loaded bundle=%@ module=%@", bundleURL, self.currentModuleName);
-    
-    // Send event to JS to notify that sub-app is ready
-    NSLog(@"[SubAppLauncher] Sending onSubAppReady event to JS");
-    NSLog(@"[SubAppLauncher] - self: %@", self);
-    NSLog(@"[SubAppLauncher] - bridge: %@", self.bridge);
-    NSLog(@"[SubAppLauncher] - bridge.valid: %@", self.bridge.valid ? @"YES" : @"NO");
-    
-    // Use self.bridge (should be set by RCTBridge when module is created)
-    RCTBridge *targetBridge = self.bridge;
-    
-    if (targetBridge && targetBridge.valid) {
-      // Use RCTDeviceEventEmitter directly
-      id deviceEventEmitter = [targetBridge moduleForName:@"RCTDeviceEventEmitter"];
-      if (deviceEventEmitter) {
-        [targetBridge enqueueJSCall:@"RCTDeviceEventEmitter.emit"
-                                args:@[@"onSubAppReady", @{@"ready": @YES}]];
-        NSLog(@"[SubAppLauncher] Event sent via RCTDeviceEventEmitter");
-      } else {
-        // Fallback to sendEventWithName
-        [self sendEventWithName:@"onSubAppReady" body:@{
-          @"ready": @YES
-        }];
-        NSLog(@"[SubAppLauncher] Event sent via sendEventWithName");
-      }
+  NSLog(@"[SubAppLauncher] RootView created successfully:");
+  NSLog(@"[SubAppLauncher] - rootView: %@", rootView);
+  NSLog(@"[SubAppLauncher] - rootView.frame: %@", NSStringFromCGRect(rootView.frame));
+  NSLog(@"[SubAppLauncher] - rootView.backgroundColor: %@", rootView.backgroundColor);
+  NSLog(@"[SubAppLauncher] Stored currentSubAppRootView: %@", self.currentSubAppRootView);
+}
+
+- (void)_sendSubAppReadyEvent {
+  NSLog(@"[SubAppLauncher] Sending onSubAppReady event to JS");
+  NSLog(@"[SubAppLauncher] - self: %@", self);
+  NSLog(@"[SubAppLauncher] - bridge: %@", self.bridge);
+  NSLog(@"[SubAppLauncher] - bridge.valid: %@", self.bridge.valid ? @"YES" : @"NO");
+  
+  RCTBridge *targetBridge = self.bridge;
+  
+  if (targetBridge && targetBridge.valid) {
+    // Use RCTDeviceEventEmitter directly
+    id deviceEventEmitter = [targetBridge moduleForName:@"RCTDeviceEventEmitter"];
+    if (deviceEventEmitter) {
+      [targetBridge enqueueJSCall:@"RCTDeviceEventEmitter.emit"
+                              args:@[@"onSubAppReady", @{@"ready": @YES}]];
+      NSLog(@"[SubAppLauncher] Event sent via RCTDeviceEventEmitter");
     } else {
-      NSLog(@"[SubAppLauncher] ERROR: No valid bridge available, will retry");
-      // Try to send after a delay
-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        RCTBridge *retryBridge = self.bridge;
-        if (retryBridge && retryBridge.valid) {
-          NSLog(@"[SubAppLauncher] Retrying to send onSubAppReady event");
-          [retryBridge enqueueJSCall:@"RCTDeviceEventEmitter.emit"
-                                args:@[@"onSubAppReady", @{@"ready": @YES}]];
-        } else {
-          NSLog(@"[SubAppLauncher] ERROR: Bridge still invalid after delay");
-        }
-      });
-    }
-    
-    // Also post a notification for native views to listen
-    NSLog(@"[SubAppLauncher] Posting SubAppRootViewReady notification");
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"SubAppRootViewReady" object:rootView];
-    NSLog(@"[SubAppLauncher] Notification posted successfully");
-    
-    if (self.pendingResolve) {
-      self.pendingResolve(nil);
-      self.pendingResolve = nil;
-      self.pendingReject = nil;
-    }
-  } @catch (NSException *exception) {
-    NSLog(@"[SubAppLauncher] Caught exception while creating rootView: %@", exception);
-    if (self.pendingReject) {
-      // Convert NSException to NSError for React Native promise rejection
-      // NSException doesn't have localizedDescription, so we need to create an NSError
-      NSString *errorMessage = exception.reason ?: @"Unknown error occurred while loading bundle";
-      NSError *error = [NSError errorWithDomain:@"SubAppLauncher"
-                                            code:-1
-                                        userInfo:@{
-        NSLocalizedDescriptionKey: errorMessage,
-        @"exceptionName": exception.name ?: @"Unknown",
-        @"exceptionReason": exception.reason ?: @""
+      // Fallback to sendEventWithName
+      [self sendEventWithName:@"onSubAppReady" body:@{
+        @"ready": @YES
       }];
-      self.pendingReject(@"BUNDLE_LOAD_ERROR", errorMessage, error);
-      self.pendingReject = nil;
-      self.pendingResolve = nil;
+      NSLog(@"[SubAppLauncher] Event sent via sendEventWithName");
     }
+  } else {
+    NSLog(@"[SubAppLauncher] ERROR: No valid bridge available, will retry");
+    // Try to send after a delay
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+      RCTBridge *retryBridge = self.bridge;
+      if (retryBridge && retryBridge.valid) {
+        NSLog(@"[SubAppLauncher] Retrying to send onSubAppReady event");
+        [retryBridge enqueueJSCall:@"RCTDeviceEventEmitter.emit"
+                              args:@[@"onSubAppReady", @{@"ready": @YES}]];
+      } else {
+        NSLog(@"[SubAppLauncher] ERROR: Bridge still invalid after delay");
+      }
+    });
+  }
+}
+
+- (void)_postRootViewReadyNotification:(UIView *)rootView {
+  NSLog(@"[SubAppLauncher] Posting SubAppRootViewReady notification");
+  [[NSNotificationCenter defaultCenter] postNotificationName:@"SubAppRootViewReady" object:rootView];
+  NSLog(@"[SubAppLauncher] Notification posted successfully");
+}
+
+- (void)_resolvePendingPromise {
+  if (self.pendingResolve) {
+    self.pendingResolve(nil);
+    self.pendingResolve = nil;
+    self.pendingReject = nil;
+  }
+}
+
+- (void)_handleRootViewCreationError:(NSError *)error {
+  NSLog(@"[SubAppLauncher] ERROR: %@", error.localizedDescription);
+  if (self.pendingReject) {
+    NSString *errorCode = @"BUNDLE_LOAD_ERROR";
+    if ([error.userInfo[@"exceptionName"] isEqualToString:@"NO_BUNDLE"]) {
+      errorCode = @"NO_BUNDLE";
+    } else if ([error.localizedDescription containsString:@"Failed to create rootView"]) {
+      errorCode = @"ROOTVIEW_NIL";
+    }
+    self.pendingReject(errorCode, error.localizedDescription, error);
+    self.pendingReject = nil;
+    self.pendingResolve = nil;
   }
 }
 
@@ -448,6 +505,25 @@ static UIViewController *_subAppVC = nil;
 + (void)setCurrentSubAppVC:(UIViewController *)vc
 {
   _subAppVC = vc;
+}
+
+#pragma mark - Notification Handlers
+
+- (void)_handleSubAppModuleNotFound:(NSNotification *)notification {
+  NSDictionary *userInfo = notification.userInfo;
+  NSString *moduleName = userInfo[@"moduleName"];
+  NSString *message = userInfo[@"message"] ?: [NSString stringWithFormat:@"Cannot find native module '%@'", moduleName];
+  
+  NSLog(@"[SubAppLauncher] Module not found: %@", moduleName);
+  
+  // 发送错误事件到 JavaScript 层
+  [self sendEventWithName:@"onSubAppError" body:@{
+    @"message": message,
+    @"moduleName": moduleName ?: @"",
+    @"code": @(-1),
+    @"domain": @"SubAppLauncher",
+    @"isFatal": @NO // 模块未找到不是致命错误，子 App 可以继续运行
+  }];
 }
 
 @end
