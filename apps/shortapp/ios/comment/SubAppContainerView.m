@@ -11,6 +11,7 @@
 #import <React/RCTView.h>
 
 @interface SubAppContainerView : RCTView
+@property (nonatomic, weak, nullable) UIView *lastAttachedRootView;
 @end
 
 @implementation SubAppContainerView
@@ -26,6 +27,12 @@
                                                selector:@selector(_handleSubAppRootViewReady:)
                                                    name:@"SubAppRootViewReady"
                                                  object:nil];
+    
+    // Listen for cleanup notification
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                               selector:@selector(_handleSubAppRootViewCleanup:)
+                                                   name:@"SubAppRootViewCleanup"
+                                                 object:nil];
   }
   return self;
 }
@@ -40,42 +47,44 @@
         self.superview, NSStringFromCGRect(self.frame));
   if (self.superview) {
     // When the view is added to the hierarchy, attach the sub-app root view
-    [self _attachSubAppRootView];
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self _attachSubAppRootView];
+    });
+  } else {
+    // When removed from hierarchy, clean up
+    UIView *rootView = [SubAppLauncher currentSubAppRootView];
+    if (rootView && rootView.superview == self) {
+      [rootView removeFromSuperview];
+    }
+    self.lastAttachedRootView = nil;
   }
 }
 
 - (void)_handleSubAppRootViewReady:(NSNotification *)notification {
-  UIView *rootView = notification.object;
-  NSLog(@"[SubAppContainerView] Received SubAppRootViewReady notification, rootView: %@", rootView);
-  
-  // Store the rootView temporarily to use if currentSubAppRootView returns null
-  if (rootView) {
-    // Try to attach immediately using the notification object
-    if (rootView.superview != self) {
-      NSLog(@"[SubAppContainerView] Attaching rootView from notification directly");
-      if (rootView.superview) {
-        [rootView removeFromSuperview];
-      }
-      rootView.frame = self.bounds;
-      rootView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-      rootView.backgroundColor = [UIColor colorWithRed:0.9 green:0.8 blue:1.0 alpha:1.0];
-      [self addSubview:rootView];
-      NSLog(@"[SubAppContainerView] RootView attached from notification");
-    }
-  }
-  
-  // Also try the normal way
   [self _attachSubAppRootView];
 }
 
+- (void)_handleSubAppRootViewCleanup:(NSNotification *)notification {
+  UIView *oldRootView = notification.object;
+  if (oldRootView && oldRootView.superview == self) {
+    NSLog(@"[SubAppContainerView] Removing old rootView from container due to cleanup");
+    [oldRootView removeFromSuperview];
+  }
+  if (oldRootView == self.lastAttachedRootView) {
+    self.lastAttachedRootView = nil;
+  }
+}
+
 - (void)_attachSubAppRootView {
-  // Try multiple ways to get the root view
+  if (!self.superview) {
+    return;
+  }
+  
   UIView *subAppRootView = [SubAppLauncher currentSubAppRootView];
   
-  // If null, try to get from notification object (stored in a static variable)
-  if (!subAppRootView) {
-    // Try to get from the notification center's last posted object
-    // This is a workaround - we'll store it in the notification userInfo
+  // Don't re-attach the same rootView
+  if (!subAppRootView || subAppRootView == self.lastAttachedRootView) {
+    return;
   }
   
   NSLog(@"[SubAppContainerView] _attachSubAppRootView called");
@@ -84,33 +93,43 @@
   NSLog(@"[SubAppContainerView] - Current superview: %@", self.superview);
   NSLog(@"[SubAppContainerView] - Current subviews count: %lu", (unsigned long)self.subviews.count);
   
-  if (subAppRootView) {
-    NSLog(@"[SubAppContainerView] - subAppRootView.superview: %@", subAppRootView.superview);
-    NSLog(@"[SubAppContainerView] - subAppRootView.frame: %@", NSStringFromCGRect(subAppRootView.frame));
+  // Remove from previous parent if any
+  if (subAppRootView.superview) {
+    NSLog(@"[SubAppContainerView] Removing from previous parent: %@", subAppRootView.superview);
+    [subAppRootView removeFromSuperview];
+  }
+  
+  // Use async dispatch to ensure we're on main thread and avoid view controller hierarchy issues
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (!self.superview) {
+      return;
+    }
     
-    if (subAppRootView.superview != self) {
-      NSLog(@"[SubAppContainerView] Attaching sub-app root view: %@", subAppRootView);
-      // Remove from previous parent if any
-      if (subAppRootView.superview) {
-        NSLog(@"[SubAppContainerView] Removing from previous parent: %@", subAppRootView.superview);
-        [subAppRootView removeFromSuperview];
-      }
-      
-      // Add to this container
-      subAppRootView.frame = self.bounds;
-      subAppRootView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-      // Set background color for debugging (purple - sub-app root view)
-      subAppRootView.backgroundColor = [UIColor colorWithRed:0.9 green:0.8 blue:1.0 alpha:1.0];
-      
-      [self addSubview:subAppRootView];
+    UIView *toAttach = [SubAppLauncher currentSubAppRootView];
+    if (!toAttach || toAttach == self.lastAttachedRootView) {
+      return;
+    }
+    
+    // Configure the view
+    toAttach.frame = self.bounds;
+    toAttach.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    toAttach.backgroundColor = [UIColor colorWithRed:0.9 green:0.8 blue:1.0 alpha:1.0];
+    
+    // Add to container with exception handling
+    @try {
+      [self addSubview:toAttach];
+      self.lastAttachedRootView = toAttach;
       NSLog(@"[SubAppContainerView] Sub-app root view attached successfully");
       NSLog(@"[SubAppContainerView] - New subviews count: %lu", (unsigned long)self.subviews.count);
-    } else {
-      NSLog(@"[SubAppContainerView] Sub-app root view already attached to this container");
+    } @catch (NSException *exception) {
+      NSLog(@"[SubAppContainerView] ERROR: Failed to attach rootView: %@", exception);
+      // Clean up if attachment failed
+      if (toAttach.superview == self) {
+        [toAttach removeFromSuperview];
+      }
+      [[NSNotificationCenter defaultCenter] postNotificationName:@"SubAppRootViewCleanup" object:toAttach];
     }
-  } else {
-    NSLog(@"[SubAppContainerView] No sub-app root view available yet");
-  }
+  });
 }
 
 - (void)layoutSubviews {
@@ -119,10 +138,7 @@
         NSStringFromCGRect(self.frame), (unsigned long)self.subviews.count);
   // Ensure sub-app root view fills the container
   for (UIView *subview in self.subviews) {
-    if (subview != self.subviews.firstObject) { // Skip React Native's own subviews
-      NSLog(@"[SubAppContainerView] Resizing subview: %@ to frame: %@", subview, NSStringFromCGRect(self.bounds));
-      subview.frame = self.bounds;
-    }
+    subview.frame = self.bounds;
   }
 }
 

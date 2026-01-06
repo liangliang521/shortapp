@@ -114,44 +114,54 @@ RCT_EXPORT_METHOD(openSubApp
       return;
     }
     
+    if (!manifestUrl.length || !moduleName.length) {
+      reject(@"INVALID_PARAMS", @"manifestUrl or moduleName is empty", nil);
+      return;
+    }
+    
     NSURL *manifestNSURL = [NSURL URLWithString:manifestUrl];
     if (!manifestNSURL) {
       reject(@"INVALID_URL", [NSString stringWithFormat:@"Invalid manifest URL: %@", manifestUrl], nil);
       return;
     }
     
-    // Store pending callbacks and info
-    self.pendingResolve = resolve;
-    self.pendingReject = reject;
-    self.currentManifestUrl = manifestNSURL;
-    self.currentModuleName = moduleName;
+    // Clean up old rootView before creating a new one
+    UIView *oldRootView = self.currentSubAppRootView;
+    if (oldRootView) {
+      NSLog(@"[SubAppLauncher] Cleaning up old rootView before opening new sub-app");
+      // Post cleanup notification so container views can remove it
+      [[NSNotificationCenter defaultCenter] postNotificationName:@"SubAppRootViewCleanup" object:oldRootView];
+      // Remove from superview if still attached
+      if (oldRootView.superview) {
+        [oldRootView removeFromSuperview];
+      }
+      self.currentSubAppRootView = nil;
+    }
     
-    // Add default scheme for sub-apps to avoid ExpoLinking errors
-    // Sub-apps don't have their own app.json, so we provide a default scheme
-    NSMutableDictionary *propsWithScheme = [NSMutableDictionary dictionaryWithDictionary:initialProps ?: @{}];
-    // Note: ExpoLinking reads scheme from ExpoConstants, not from initialProps
-    // We'll need to configure it differently
-    self.currentInitialProps = propsWithScheme;
-    
-    // Create loader
-    SubAppLoader *loader = [[SubAppLoader alloc] initWithManifestUrl:manifestNSURL];
-    loader.delegate = self;
-    // Use Always policy to periodically check for updates (similar to expo-go's behavior)
-    loader.updateCheckPolicy = SubAppUpdateCheckPolicyAlways;
-    self.currentLoader = loader;
-    
-    // Start loading
-    [loader startLoading];
+    // Wait one run loop cycle to ensure container views have processed cleanup
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self _startSubAppLoader:manifestNSURL moduleName:moduleName initialProps:initialProps resolve:resolve reject:reject];
+    });
   });
 }
 
 RCT_EXPORT_METHOD(closeSubApp)
 {
   dispatch_async(dispatch_get_main_queue(), ^{
-    [self.currentLoader stopUpdateChecking];
+    if (self.currentLoader) {
+      [self.currentLoader stopUpdateChecking];
+    }
     self.currentLoader = nil;
-    // Keep currentManifestUrl, currentModuleName, and currentInitialProps
-    // so we can reload even after closing
+    
+    // Clean up rootView
+    UIView *rootView = self.currentSubAppRootView;
+    if (rootView) {
+      if (rootView.superview) {
+        [rootView removeFromSuperview];
+      }
+      [[NSNotificationCenter defaultCenter] postNotificationName:@"SubAppRootViewCleanup" object:rootView];
+      self.currentSubAppRootView = nil;
+    }
     
     if (SubAppLauncher.currentSubAppVC) {
       [SubAppLauncher.currentSubAppVC dismissViewControllerAnimated:YES completion:^{
@@ -215,27 +225,70 @@ RCT_EXPORT_METHOD(reloadSubApp
       NSLog(@"[SubAppLauncher] Recreating loader from stored manifest URL: %@", instance.currentManifestUrl);
       
       // Clear old root view if exists
-      if (instance.currentSubAppRootView) {
-        [instance.currentSubAppRootView removeFromSuperview];
+      UIView *oldRootView = instance.currentSubAppRootView;
+      if (oldRootView) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"SubAppRootViewCleanup" object:oldRootView];
+        if (oldRootView.superview) {
+          [oldRootView removeFromSuperview];
+        }
         instance.currentSubAppRootView = nil;
       }
       
-          SubAppLoader *loader = [[SubAppLoader alloc] initWithManifestUrl:instance.currentManifestUrl];
-          loader.delegate = instance;
-          // Use Always policy to periodically check for updates (similar to expo-go's behavior)
-          loader.updateCheckPolicy = SubAppUpdateCheckPolicyAlways;
-          instance.currentLoader = loader;
-      
-      // Store pending callbacks
-      instance.pendingResolve = resolve;
-      instance.pendingReject = reject;
-      
-      [loader startLoading];
+      // Wait one run loop cycle before recreating
+      dispatch_async(dispatch_get_main_queue(), ^{
+        SubAppLoader *loader = [[SubAppLoader alloc] initWithManifestUrl:instance.currentManifestUrl];
+        loader.delegate = instance;
+        // Use Always policy to periodically check for updates (similar to expo-go's behavior)
+        loader.updateCheckPolicy = SubAppUpdateCheckPolicyAlways;
+        instance.currentLoader = loader;
+        
+        // Store pending callbacks
+        instance.pendingResolve = resolve;
+        instance.pendingReject = reject;
+        
+        [loader startLoading];
+      });
     } else {
       NSLog(@"[SubAppLauncher] ERROR: No loader and no manifest URL available");
       if (reject) reject(@"NO_LOADER", @"No active sub app loader. Please open a sub app first.", nil);
     }
   });
+}
+
+#pragma mark - Loader
+
+- (void)_startSubAppLoader:(NSURL *)manifestURL
+                moduleName:(NSString *)moduleName
+              initialProps:(NSDictionary *)initialProps
+                   resolve:(RCTPromiseResolveBlock)resolve
+                    reject:(RCTPromiseRejectBlock)reject
+{
+  if (self.currentLoader) {
+    [self.currentLoader stopUpdateChecking];
+  }
+  
+  // Store pending callbacks and info
+  self.pendingResolve = resolve;
+  self.pendingReject = reject;
+  self.currentManifestUrl = manifestURL;
+  self.currentModuleName = moduleName;
+  
+  // Add default scheme for sub-apps to avoid ExpoLinking errors
+  // Sub-apps don't have their own app.json, so we provide a default scheme
+  NSMutableDictionary *propsWithScheme = [NSMutableDictionary dictionaryWithDictionary:initialProps ?: @{}];
+  // Note: ExpoLinking reads scheme from ExpoConstants, not from initialProps
+  // We'll need to configure it differently
+  self.currentInitialProps = propsWithScheme;
+  
+  // Create loader
+  SubAppLoader *loader = [[SubAppLoader alloc] initWithManifestUrl:manifestURL];
+  loader.delegate = self;
+  // Use Always policy to periodically check for updates (similar to expo-go's behavior)
+  loader.updateCheckPolicy = SubAppUpdateCheckPolicyAlways;
+  self.currentLoader = loader;
+  
+  // Start loading
+  [loader startLoading];
 }
 
 #pragma mark - SubAppLoaderDelegate
