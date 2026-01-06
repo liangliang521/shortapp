@@ -11,6 +11,9 @@ PODS:
     - PromisesObjC (~> 2.4)
   - BVLinearGradient (2.8.3):
     - React-Core
+  - EXAV (15.0.2):
+    - ExpoModulesCore
+    - ReactCommon/turbomodule/core
   - EXConstants (18.0.12):
     - ExpoModulesCore
   - Expo (54.0.30):
@@ -52,6 +55,9 @@ PODS:
     - ExpoModulesCore
   - ExpoFont (14.0.10):
     - ExpoModulesCore
+  - ExpoHead (6.0.21):
+    - ExpoModulesCore
+    - RNScreens
   - ExpoKeepAwake (15.0.8):
     - ExpoModulesCore
   - ExpoLinking (8.0.11):
@@ -2389,6 +2395,7 @@ PODS:
 
 DEPENDENCIES:
   - BVLinearGradient (from `../../../node_modules/react-native-linear-gradient`)
+  - EXAV (from `../../../node_modules/expo-av/ios`)
   - EXConstants (from `../../../node_modules/expo-constants/ios`)
   - Expo (from `../../../node_modules/expo`)
   - "ExpoAdapterGoogleSignIn (from `../../../node_modules/@react-native-google-signin/google-signin/expo/ios`)"
@@ -2396,6 +2403,7 @@ DEPENDENCIES:
   - ExpoCamera (from `../../../node_modules/expo-camera/ios`)
   - ExpoFileSystem (from `../../../node_modules/expo-file-system/ios`)
   - ExpoFont (from `../../../node_modules/expo-font/ios`)
+  - ExpoHead (from `../../../node_modules/expo-router/ios`)
   - ExpoKeepAwake (from `../../../node_modules/expo-keep-awake/ios`)
   - ExpoLinking (from `../../../node_modules/expo-linking/ios`)
   - ExpoModulesCore (from `../../../node_modules/expo-modules-core`)
@@ -2510,6 +2518,8 @@ SPEC REPOS:
 EXTERNAL SOURCES:
   BVLinearGradient:
     :path: "../../../node_modules/react-native-linear-gradient"
+  EXAV:
+    :path: "../../../node_modules/expo-av/ios"
   EXConstants:
     :path: "../../../node_modules/expo-constants/ios"
   Expo:
@@ -2524,6 +2534,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/expo-file-system/ios"
   ExpoFont:
     :path: "../../../node_modules/expo-font/ios"
+  ExpoHead:
+    :path: "../../../node_modules/expo-router/ios"
   ExpoKeepAwake:
     :path: "../../../node_modules/expo-keep-awake/ios"
   ExpoLinking:
@@ -2716,6 +2728,7 @@ SPEC CHECKSUMS:
   AppAuth: 1c1a8afa7e12f2ec3a294d9882dfa5ab7d3cb063
   AppCheckCore: cc8fd0a3a230ddd401f326489c99990b013f0c4f
   BVLinearGradient: cb006ba232a1f3e4f341bb62c42d1098c284da70
+  EXAV: 4c41f0a6ae54a0b96597abc90e37962ab2ee0d85
   EXConstants: 805f35b1b295c542ca6acce836f21a1f9ee104d5
   Expo: 60c21ba34593688a2a6e8445c1f8b44abb0e3fae
   ExpoAdapterGoogleSignIn: 21ff1daeef3d21cb0b45772d8029102cc728d6b1
@@ -2723,6 +2736,7 @@ SPEC CHECKSUMS:
   ExpoCamera: 6a326deb45ba840749652e4c15198317aa78497e
   ExpoFileSystem: 858a44267a3e6e9057e0888ad7c7cfbf55d52063
   ExpoFont: 35ac6191ed86bbf56b3ebd2d9154eda9fad5b509
+  ExpoHead: 9719a74953454fac328e90f34eea55ebbb3bbbf9
   ExpoKeepAwake: 55f75eca6499bb9e4231ebad6f3e9cb8f99c0296
   ExpoLinking: 8f0aaf69aa56f832913030503b6263dc6f647f37
   ExpoModulesCore: f3da4f1ab5a8375d0beafab763739dbee8446583
