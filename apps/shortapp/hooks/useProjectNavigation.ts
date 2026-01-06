@@ -237,7 +237,7 @@ export function useProjectNavigation(): UseProjectNavigationReturn {
     const projectStatus = getProjectStatus(project);
     if (projectStatus === 'completed') {
       console.log('✅ [useProjectNavigation] Project is completed, navigating directly');
-      (navigation as any).navigate('ProjectWebView', { project });
+      (navigation as any).navigate('ProjectWebView', { projectId: project.project_id });
       return;
     }
 
@@ -252,7 +252,7 @@ export function useProjectNavigation(): UseProjectNavigationReturn {
     // 如果不是自己的项目，直接跳转（别人的项目我们无法启动，但可能可以查看）
     if (!ownProject) {
       console.log('ℹ️ [useProjectNavigation] Not own project, navigating directly');
-      (navigation as any).navigate('ProjectWebView', { project });
+      (navigation as any).navigate('ProjectWebView', { projectId: project.project_id });
       return;
     }
 
@@ -280,18 +280,8 @@ export function useProjectNavigation(): UseProjectNavigationReturn {
         () => {
           // 成功：状态变为 ACTIVE，跳转
           console.log('✅ [useProjectNavigation] Project is ready, navigating...');
-          // 重新获取项目详情以确保数据是最新的
-          httpClient.getProject(project.project_id).then((response) => {
-            if (response.code === 0 && response.data) {
-              (navigation as any).navigate('ProjectWebView', { project: response.data });
-            } else {
-              // 如果获取失败，使用原始项目数据跳转
-              (navigation as any).navigate('ProjectWebView', { project });
-            }
-          }).catch(() => {
-            // 如果获取失败，使用原始项目数据跳转
-            (navigation as any).navigate('ProjectWebView', { project });
-          });
+          // 直接使用 project_id 跳转，ProjectWebViewScreen 会通过 API 获取最新数据
+          (navigation as any).navigate('ProjectWebView', { projectId: project.project_id });
         },
         () => {
           // 超时：显示重试弹窗

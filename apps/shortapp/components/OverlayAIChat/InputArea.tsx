@@ -24,8 +24,8 @@ interface InputAreaProps {
   isKeyboardVisible?: boolean; // 键盘是否可见
   onCollapsePress?: () => void; // 下拉折叠按钮点击回调
   // 项目类型选择（仅创建页面使用）
-  projectType?: 'miniapp' | 'web';
-  onProjectTypeChange?: (type: 'miniapp' | 'web') => void;
+  projectType?: 'nativeapp' | 'web';
+  onProjectTypeChange?: (type: 'nativeapp' | 'web') => void;
 }
 
 // SVG 加载圈圈组件
@@ -260,7 +260,7 @@ export default function InputArea({
                                 <TouchableOpacity
                                   style={styles.projectTypeMenuItem}
                                   onPress={() => {
-                                    onProjectTypeChange('miniapp');
+                                    onProjectTypeChange('nativeapp');
                                     setShowProjectTypeMenu(false);
                                   }}
                                 >
@@ -268,7 +268,7 @@ export default function InputArea({
                                   <Text style={styles.projectTypeMenuItemText}>
                                     Mobile app
                                   </Text>
-                                  {projectType === 'miniapp' && (
+                                  {projectType === 'nativeapp' && (
                                     <View style={styles.activeDot} />
                                   )}
                                 </TouchableOpacity>
@@ -302,7 +302,7 @@ export default function InputArea({
                                 <TouchableOpacity
                                   style={styles.projectTypeMenuItem}
                                   onPress={() => {
-                                    onProjectTypeChange('miniapp');
+                                    onProjectTypeChange('nativeapp');
                                     setShowProjectTypeMenu(false);
                                   }}
                                 >
@@ -310,7 +310,7 @@ export default function InputArea({
                                   <Text style={styles.projectTypeMenuItemText}>
                                     Mobile app
                                   </Text>
-                                  {projectType === 'miniapp' && (
+                                  {projectType === 'nativeapp' && (
                                     <View style={styles.activeDot} />
                                   )}
                                 </TouchableOpacity>
@@ -457,7 +457,7 @@ export default function InputArea({
                                 <TouchableOpacity
                                   style={styles.projectTypeMenuItem}
                                   onPress={() => {
-                                    onProjectTypeChange('miniapp');
+                                    onProjectTypeChange('nativeapp');
                                     setShowProjectTypeMenu(false);
                                   }}
                                 >
@@ -465,7 +465,7 @@ export default function InputArea({
                                   <Text style={styles.projectTypeMenuItemText}>
                                     Mobile app
                                   </Text>
-                                  {projectType === 'miniapp' && (
+                                  {projectType === 'nativeapp' && (
                                     <View style={styles.activeDot} />
                                   )}
                                 </TouchableOpacity>
@@ -499,7 +499,7 @@ export default function InputArea({
                                 <TouchableOpacity
                                   style={styles.projectTypeMenuItem}
                                   onPress={() => {
-                                    onProjectTypeChange('miniapp');
+                                    onProjectTypeChange('nativeapp');
                                     setShowProjectTypeMenu(false);
                                   }}
                                 >
@@ -507,7 +507,7 @@ export default function InputArea({
                                   <Text style={styles.projectTypeMenuItemText}>
                                     Mobile app
                                   </Text>
-                                  {projectType === 'miniapp' && (
+                                  {projectType === 'nativeapp' && (
                                     <View style={styles.activeDot} />
                                   )}
                                 </TouchableOpacity>

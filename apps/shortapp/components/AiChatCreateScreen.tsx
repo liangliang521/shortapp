@@ -52,7 +52,7 @@ export default function AiChatCreateScreen({ onBack, initialPrompt }: AiChatCrea
   const [showBuildModal, setShowBuildModal] = useState(false);
   const [showModelModal, setShowModelModal] = useState(false);
   const [selectedModel, setSelectedModel] = useState('glm-4.7');
-  const [projectType, setProjectType] = useState<'miniapp' | 'web'>('miniapp'); // 项目类型：miniapp 或 web
+  const [projectType, setProjectType] = useState<'nativeapp' | 'web'>('nativeapp'); // 项目类型：nativeapp 或 web
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const hasInitialized = useRef(false);
   const [hasUserSentMessage, setHasUserSentMessage] = useState(false); // 标记用户是否已发送消息
@@ -60,6 +60,7 @@ export default function AiChatCreateScreen({ onBack, initialPrompt }: AiChatCrea
   const isCodeGenerationCompleteRef = useRef(false); // 立即可用的代码生成完成标志（解决异步状态问题）
   const [isSandboxReady, setIsSandboxReady] = useState(false); // 标记沙盒是否就绪
   const previewUrlRef = useRef<string | null>(null); // 保存预览URL
+  const bundleUrlRef = useRef<string | null>(null); // 保存 bundle_url（仅 nativeapp 使用）
   const SELECTED_MODEL_KEY = '@ai_chat_selected_model';
   
   // 同步 state 到 ref（解决异步状态问题）
@@ -137,18 +138,9 @@ export default function AiChatCreateScreen({ onBack, initialPrompt }: AiChatCrea
             // 使用 replace：用预览页面替换当前创建页面，
             // 这样在预览页点返回时不会回到创建页，而是回到再上一级页面
             (navigation as any).replace('ProjectWebView', { 
-              project: { 
-                project_id: projectId, 
-                name: 'Project',
-                type: projectType, // 添加项目类型：miniapp 或 web
-                user_id: user?.user_id || '', // 添加 user_id，用于判断是否是本人的项目
-                startup_info: { 
-                  web_preview_url: url,
-                  preview_url: url, // 同时传递 preview_url 作为备用
-                } 
-              } 
+              projectId: projectId
             });
-            console.log('✅ [AiChatCreateScreen] Preview opened successfully with web_preview_url:', url);
+            console.log('✅ [AiChatCreateScreen] Preview opened successfully');
           } else {
             console.warn('⚠️ [AiChatCreateScreen] URL or Project ID is missing:', { url, projectId });
           }
@@ -354,8 +346,23 @@ export default function AiChatCreateScreen({ onBack, initialPrompt }: AiChatCrea
               console.log('ℹ️ [AiChatCreateScreen] 跳过 "SETTING UP SANDBOX" 状态消息，不显示给用户');
             }
           }
-          // 优先使用 web_preview_url
-          const previewUrl = startup_info?.web_preview_url || startup_info?.preview_url;
+          // 根据项目类型选择预览 URL
+          // 如果是 nativeapp，使用 bundle_url + /metadata.json
+          // 如果是 web，使用 web_preview_url
+          let previewUrl: string | undefined;
+          if (projectType === 'nativeapp' && startup_info?.bundle_url) {
+            // 保存原始的 bundle_url
+            bundleUrlRef.current = startup_info.bundle_url;
+            // 确保 bundle_url 以 / 结尾，然后拼接 metadata.json
+            const bundleUrl = startup_info.bundle_url.endsWith('/') 
+              ? startup_info.bundle_url 
+              : startup_info.bundle_url + '/';
+            previewUrl = bundleUrl + 'metadata.json';
+          } else {
+            // web app 使用 web_preview_url，清除 bundle_url
+            bundleUrlRef.current = null;
+            previewUrl = startup_info?.web_preview_url || startup_info?.preview_url;
+          }
           if (status === 'success' && previewUrl) {
             console.log('✅ [AiChatCreateScreen] 沙盒启动成功',startup_info);
             console.log('🚀 [AiChatCreateScreen] Preview URL:', previewUrl);
@@ -408,6 +415,7 @@ export default function AiChatCreateScreen({ onBack, initialPrompt }: AiChatCrea
             setIsCodeGenerationComplete(false);
             setIsSandboxReady(false);
             previewUrlRef.current = null;
+            bundleUrlRef.current = null;
           } else if (status === 'killed') {
             console.log('⚠️ [AiChatCreateScreen] 沙盒被停止');
             // 停止所有状态
@@ -417,6 +425,7 @@ export default function AiChatCreateScreen({ onBack, initialPrompt }: AiChatCrea
             setIsCodeGenerationComplete(false);
             setIsSandboxReady(false);
             previewUrlRef.current = null;
+            bundleUrlRef.current = null;
           } else {
             console.log('ℹ️ [AiChatCreateScreen] 沙盒状态:', status);
           }
@@ -666,6 +675,7 @@ export default function AiChatCreateScreen({ onBack, initialPrompt }: AiChatCrea
             setIsCodeGenerationComplete(false);
             setIsSandboxReady(false);
             previewUrlRef.current = null;
+            bundleUrlRef.current = null;
             
             // 已添加友好提示消息，直接返回
             return;

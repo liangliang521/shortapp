@@ -156,7 +156,8 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
   // 打开子 App
   const openSubApp = useCallback(async () => {
     // 使用测试地址覆盖传入的 previewUrl
-    const manifestUrl = TEST_MANIFEST_URL || previewUrl;
+    console.log('[MobilePreview] Opening sub app with preview URL:', previewUrl);
+    const manifestUrl =  previewUrl;
     
     if (!manifestUrl) {
       const errorMsg = 'No preview URL available';
@@ -207,7 +208,7 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
         await SubAppLauncherService.reloadSubApp();
       } catch (reloadError) {
         console.log('[MobilePreview] Reload failed, trying to reopen sub app:', reloadError);
-        const manifestUrl = TEST_MANIFEST_URL || previewUrl;
+        const manifestUrl = previewUrl;
         const normalizedUrl = normalizeExpUrlToHttp(manifestUrl);
         await SubAppLauncherService.openSubApp(normalizedUrl, 'main', { projectId });
       }
@@ -232,7 +233,7 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
 
   // 组件挂载时自动打开子 App
   useEffect(() => {
-    if (isMountedRef.current && TEST_MANIFEST_URL) {
+    if (isMountedRef.current) {
       openSubApp();
     }
 
@@ -246,7 +247,22 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
   // 检查是否有有效的 manifest URL
   const manifestUrl = TEST_MANIFEST_URL || previewUrl;
   
+  // 调试：打印接收到的 previewUrl
+  console.log('🔍 [MobilePreview] Received previewUrl:', {
+    previewUrl,
+    TEST_MANIFEST_URL,
+    manifestUrl,
+    hasPreviewUrl: !!previewUrl,
+    hasTestUrl: !!TEST_MANIFEST_URL,
+    finalManifestUrl: manifestUrl,
+  });
+  
   if (!manifestUrl) {
+    console.warn('⚠️ [MobilePreview] No preview URL available:', {
+      previewUrl,
+      TEST_MANIFEST_URL,
+      manifestUrl,
+    });
     return (
       <View style={styles.container}>
         <View style={styles.errorContainer}>

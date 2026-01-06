@@ -86,7 +86,7 @@ export function useHomeNavigation(): UseHomeNavigationReturn {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // 跳转到内部 WebView 页面
-      (navigation as any).navigate('ProjectWebView', { project });
+      (navigation as any).navigate('ProjectWebView', { projectId: project.project_id });
 
       console.log('✅ Project opened in WebView');
     } catch (error) {

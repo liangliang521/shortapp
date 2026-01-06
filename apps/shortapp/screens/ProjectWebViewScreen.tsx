@@ -45,7 +45,7 @@ import Animated, {
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 type ProjectWebViewRouteParams = {
   ProjectWebView: {
-    project: Project;
+    projectId: string;
   };
 };
 
@@ -89,8 +89,13 @@ export default function ProjectWebViewScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<ProjectWebViewRouteParams, 'ProjectWebView'>>();
   const insets = useSafeAreaInsets();
-  const { project } = route.params;
+  const { projectId } = route.params;
   const { user } = useAuth();
+
+  // 项目数据状态
+  const [project, setProject] = useState<Project | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [showAIChat, setShowAIChat] = useState(false); // 默认显示
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -106,8 +111,46 @@ export default function ProjectWebViewScreen() {
   // 相机权限弹窗状态
   const [showCameraPermissionModal, setShowCameraPermissionModal] = useState(false);
 
+  // 获取项目数据
+  useEffect(() => {
+    const fetchProject = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        console.log('📡 [ProjectWebViewScreen] Fetching project:', projectId);
+        const response = await httpClient.getProject(projectId);
+        console.log('📡 [ProjectWebViewScreen] API response:', response.data);
+        
+        if (response.code === 0 && response.data) {
+          setProject(response.data);
+          console.log('✅ [ProjectWebViewScreen] Project fetched successfully:', response.data.project_id);
+        } else {
+          const errorMessage = response.info || 'Failed to load project';
+          setError(errorMessage);
+          console.error('❌ [ProjectWebViewScreen] Failed to fetch project:', errorMessage);
+          Alert.alert('Error', errorMessage, [
+            { text: 'OK', onPress: () => navigation.goBack() }
+          ]);
+        }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        setError(errorMessage);
+        console.error('❌ [ProjectWebViewScreen] Error fetching project:', err);
+        Alert.alert('Error', errorMessage, [
+          { text: 'OK', onPress: () => navigation.goBack() }
+        ]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (projectId) {
+      fetchProject();
+    }
+  }, [projectId, navigation]);
+
   // 判断是否是本人的项目
-  const isOwnProject = user && project.user_id === user.user_id;
+  const isOwnProject = user && project && project.user_id === user.user_id;
 
   // 动画值：顶部按钮的透明度和位移
   const topActionsOpacity = useSharedValue(1);
@@ -194,13 +237,28 @@ export default function ProjectWebViewScreen() {
   }));
 
   // 获取预览 URL（优先使用 web_preview_url）
-  const previewUrl = project.startup_info?.web_preview_url || project.startup_info?.preview_url || '';
+  const previewUrl = project?.startup_info?.web_preview_url || project?.startup_info?.preview_url || '';
+  
+  // 调试：打印项目信息
+  useEffect(() => {
+    if (project) {
+      console.log('🔍 [ProjectWebViewScreen] Project data:', {
+        project_id: project.project_id,
+        type: project.type,
+        startup_info: project.startup_info,
+        bundle_url: (project.startup_info as any)?.bundle_url,
+        web_preview_url: project.startup_info?.web_preview_url,
+        preview_url: project.startup_info?.preview_url,
+      });
+    }
+  }, [project]);
 
   // 判断项目是否已发布
-  const isPublic = project.app?.isPublic ?? project.isPublic ?? false;
+  const isPublic = project?.app?.isPublic ?? project?.isPublic ?? false;
 
   // 分享功能（统一封装逻辑）
   const handleShare = async () => {
+    if (!project) return;
     try {
       await ensurePublishedAndShare({
         project,
@@ -228,19 +286,20 @@ export default function ProjectWebViewScreen() {
 
   // 刷新预览的函数 - 根据项目类型刷新对应的预览组件
   const handleRefreshPreview = useCallback(() => {
+    if (!project) return;
     const projectType = project.type || 'miniapp';
     console.log('🔄 [ProjectWebViewScreen] Refreshing preview...', { projectType });
     
     if (projectType === 'web' && webPreviewRef.current) {
       webPreviewRef.current.refresh();
       console.log('✅ [ProjectWebViewScreen] Web preview refresh triggered');
-    } else if (projectType === 'miniapp' && mobilePreviewRef.current) {
+    } else if (projectType === 'nativeapp' && mobilePreviewRef.current) {
       mobilePreviewRef.current.refresh();
       console.log('✅ [ProjectWebViewScreen] Mobile preview refresh triggered');
     } else {
       console.warn('⚠️ [ProjectWebViewScreen] Preview ref is not available', { projectType });
     }
-  }, [project.type]);
+  }, [project]);
 
   // 保持向后兼容的别名
   const handleRefreshWebView = handleRefreshPreview;
@@ -266,7 +325,7 @@ export default function ProjectWebViewScreen() {
  
   // 监听沙盒启动成功，自动刷新 WebView
   useEffect(() => {
-    if (!project.project_id) {
+    if (!project?.project_id) {
       return;
     }
 
@@ -297,7 +356,7 @@ export default function ProjectWebViewScreen() {
       console.log('🔌 [ProjectWebViewScreen] Cleaning up sandbox status listener');
       unsubscribe();
     };
-  }, [project.project_id, handleRefreshWebView]);
+  }, [project?.project_id, handleRefreshWebView]);
 
   // 断开 WebSocket 连接的函数
   const disconnectWebSocket = useCallback(() => {
@@ -374,18 +433,41 @@ export default function ProjectWebViewScreen() {
   // }, [navigation, disconnectWebSocket]);
 
   // 根据项目类型决定使用哪个预览组件
-  const projectType = project.type || 'miniapp';
+  const projectType = project?.type || 'miniapp';
+
+  // 显示加载状态
+  if (loading) {
+    return (
+      <View style={styles.outerContainer}>
+        <View style={styles.container}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#007AFF" />
+            <Text style={styles.loadingText}>Loading...</Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  // 显示错误状态
+  if (error || !project) {
+    return (
+      <View style={styles.outerContainer}>
+        <View style={styles.container}>
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{error || 'Project not found'}</Text>
+            <Text style={styles.errorSubtext}>
+              Please try again later.
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.outerContainer}>
       <View style={styles.container}>
-
-      {/* {loading && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#007AFF" />
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
-      )} */}
 
       {/* 根据项目类型选择预览组件 */}
       {projectType === 'web' ? (
@@ -402,10 +484,22 @@ export default function ProjectWebViewScreen() {
             setStripeCancelUrl(cancelUrl || null);
           }}
         />
-      ) : projectType === 'miniapp' ? (
+      ) : projectType === 'nativeapp' ? (
         <MobilePreview
           ref={mobilePreviewRef}
-          previewUrl={previewUrl}
+          previewUrl={(() => {
+            // 对于 nativeapp，优先使用 bundle_url，如果没有则使用 preview_url
+            const bundleUrl = (project.startup_info as any)?.bundle_url || project.startup_info?.preview_url;
+            const finalUrl = bundleUrl ? bundleUrl + '/metadata.json' : '';
+            console.log('🔍 [ProjectWebViewScreen] NativeApp preview URL calculation:', {
+              bundle_url: (project.startup_info as any)?.bundle_url,
+              preview_url: project.startup_info?.preview_url,
+              used_url: bundleUrl,
+              final_preview_url: finalUrl,
+              startup_info: project.startup_info,
+            });
+            return finalUrl;
+          })()}
           projectId={project.project_id}
           onBack={() => navigation.goBack()}
         />

@@ -159,8 +159,8 @@ export function useDeepLink() {
                     name: project.name,
                     hasPreviewUrl: !!(project.startup_info?.web_preview_url || project.startup_info?.preview_url),
                 });
-                console.log('🔗 [DeepLink] ✅ About to navigate to ProjectWebView with project');
-                navigate('ProjectWebView', { project });
+                console.log('🔗 [DeepLink] ✅ About to navigate to ProjectWebView with projectId');
+                navigate('ProjectWebView', { projectId: project.project_id });
                 console.log('🔗 [DeepLink] ✅ Navigate called, waiting for navigation to complete...');
             } else {
                 console.error('❌ [DeepLink] ❌ Failed to fetch project:', response.info);
