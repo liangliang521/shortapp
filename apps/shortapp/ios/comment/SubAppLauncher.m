@@ -339,8 +339,7 @@ RCT_EXPORT_METHOD(reloadSubApp
         return;
       }
       rootView.translatesAutoresizingMaskIntoConstraints = YES;
-      // Set background color for debugging (purple - sub-app root view)
-      rootView.backgroundColor = [UIColor colorWithRed:0.9 green:0.8 blue:1.0 alpha:1.0];
+      // Do not force a background color here - let the sub-app control its own background.
       
       NSLog(@"[SubAppLauncher] RootView created successfully:");
       NSLog(@"[SubAppLauncher] - rootView: %@", rootView);

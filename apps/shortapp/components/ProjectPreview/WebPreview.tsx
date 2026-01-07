@@ -203,7 +203,7 @@ const WebPreview = React.forwardRef<WebPreviewRef, WebPreviewProps>(({
     <View style={styles.container}>
       {loading && (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#007AFF" />
+          {/* <ActivityIndicator size="large" color="#007AFF" /> */}
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
       )}

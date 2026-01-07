@@ -52,6 +52,7 @@
 - (void)_startAssetsDownload;
 - (void)_handleAssetsDownloaded:(NSError *)error;
 - (void)_finishLoadingWithError:(NSError *)error;
+- (NSString *)_hashString:(NSString *)string;
 @end
 
 @implementation SubAppLoader
@@ -262,10 +263,31 @@
 - (void)_handleAssetsDownloaded:(NSError *)error {
   if (self.totalAssets > 0) {
     [self _notifyProgressWithStatus:@"静态资源下载完成" done:@(self.totalAssets) total:@(self.totalAssets) type:@"assets"];
+    
+    // Log downloaded assets summary
+    NSLog(@"[SubAppLoader] ===== Assets Download Summary =====");
+    NSLog(@"[SubAppLoader] Total assets: %ld", (long)self.totalAssets);
+    NSLog(@"[SubAppLoader] Downloaded: %ld", (long)self.downloadedAssetsCount);
+    NSLog(@"[SubAppLoader] Downloaded asset keys: %@", self.downloadedAssets);
+    
+    // List all files in assets directory
+    NSString *assetsDir = [self assetsDirectoryPath];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    if ([fm fileExistsAtPath:assetsDir]) {
+      NSArray *files = [fm contentsOfDirectoryAtPath:assetsDir error:nil];
+      NSLog(@"[SubAppLoader] Files in assets directory (%@): %@", assetsDir, files);
+      
+      // Recursively list all files
+      NSArray *allFiles = [fm subpathsOfDirectoryAtPath:assetsDir error:nil];
+      NSLog(@"[SubAppLoader] All files (recursive): %@", allFiles);
+    } else {
+      NSLog(@"[SubAppLoader] ⚠️ Assets directory does not exist: %@", assetsDir);
+    }
+    NSLog(@"[SubAppLoader] ===== End Assets Summary =====");
   }
   
   if (error) {
-    NSLog(@"[SubAppLoader] Some assets failed to download: %@", error);
+    NSLog(@"[SubAppLoader] ❌ Some assets failed to download: %@", error);
     // Continue anyway, assets are optional
   }
   
@@ -389,6 +411,19 @@
   
   NSLog(@"[SubAppLoader] Downloading %lu assets", (unsigned long)assets.count);
   
+  // Log asset details for debugging
+  NSLog(@"[SubAppLoader] ===== Asset Download List =====");
+  for (NSInteger i = 0; i < assets.count; i++) {
+    NSDictionary *asset = assets[i];
+    NSString *assetKey = asset[@"key"] ?: asset[@"hash"];
+    NSString *assetUrl = asset[@"url"];
+    NSString *localPath = [self assetPathForKey:assetKey];
+    NSLog(@"[SubAppLoader] Asset[%ld] - key: %@", (long)i, assetKey);
+    NSLog(@"[SubAppLoader]   URL: %@", assetUrl);
+    NSLog(@"[SubAppLoader]   LocalPath: %@", localPath);
+  }
+  NSLog(@"[SubAppLoader] ===== End Asset List =====");
+  
   dispatch_group_t group = dispatch_group_create();
   __block NSError *lastError = nil;
   NSLock *errorLock = [[NSLock alloc] init];
@@ -422,12 +457,15 @@
     NSURLSessionDownloadTask *task = [self.downloadSession downloadTaskWithURL:assetURL
                                     completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
       if (error) {
+        NSLog(@"[SubAppLoader] ❌ Failed to download asset - key: %@, url: %@, error: %@", assetKey, assetUrlString, error);
         [errorLock lock];
         lastError = error;
         [errorLock unlock];
         dispatch_group_leave(group);
         return;
       }
+      
+      NSLog(@"[SubAppLoader] ✅ Downloaded asset - key: %@, url: %@, location: %@", assetKey, assetUrlString, location);
       
       // Verify hash if provided
       NSString *expectedHash = asset[@"hash"];
@@ -460,6 +498,18 @@
         }
       }
       
+      // Create directory structure for the asset path if needed
+      NSString *assetDir = [localPath stringByDeletingLastPathComponent];
+      if (![fm fileExistsAtPath:assetDir]) {
+        NSError *dirError;
+        [fm createDirectoryAtPath:assetDir withIntermediateDirectories:YES attributes:nil error:&dirError];
+        if (dirError) {
+          NSLog(@"[SubAppLoader] Failed to create asset directory: %@, error: %@", assetDir, dirError);
+        } else {
+          NSLog(@"[SubAppLoader] Created asset directory: %@", assetDir);
+        }
+      }
+      
       // Remove existing file if it exists (to avoid "file already exists" error)
       if ([fm fileExistsAtPath:localPath]) {
         NSError *removeError;
@@ -472,10 +522,76 @@
       NSError *moveError;
       [fm moveItemAtURL:location toURL:[NSURL fileURLWithPath:localPath] error:&moveError];
       if (moveError) {
+        NSLog(@"[SubAppLoader] ❌ Failed to move asset from %@ to %@: %@", location, localPath, moveError);
         [errorLock lock];
         lastError = moveError;
         [errorLock unlock];
       } else {
+        // Verify file exists after move
+        BOOL fileExists = [fm fileExistsAtPath:localPath];
+        if (!fileExists) {
+          NSLog(@"[SubAppLoader] ❌ Asset file does not exist after move: %@", localPath);
+        } else {
+          NSDictionary *fileAttributes = [fm attributesOfItemAtPath:localPath error:nil];
+          NSNumber *fileSize = fileAttributes[NSFileSize];
+          NSLog(@"[SubAppLoader] ✅ Asset downloaded successfully: %@ (size: %@ bytes)", localPath, fileSize);
+          
+          // Create symlink for original path if available
+          // This allows JS code to access resources using original paths from bundle
+          NSString *originalPath = asset[@"originalPath"];
+          if (originalPath && originalPath.length > 0) {
+            // Remove leading / from originalPath if present
+            if ([originalPath hasPrefix:@"/"]) {
+              originalPath = [originalPath substringFromIndex:1];
+            }
+            
+            // Remove "assets/" prefix if present (assetsDirectoryPath already includes "assets")
+            if ([originalPath hasPrefix:@"assets/"]) {
+              originalPath = [originalPath substringFromIndex:7];
+            } else if ([originalPath hasPrefix:@"assets"]) {
+              originalPath = [originalPath substringFromIndex:6];
+              if ([originalPath hasPrefix:@"/"]) {
+                originalPath = [originalPath substringFromIndex:1];
+              }
+            }
+            
+            // Create symlink path: assetsDirectoryPath/originalPath -> localPath (hash file)
+            NSString *symlinkPath = [[self assetsDirectoryPath] stringByAppendingPathComponent:originalPath];
+            NSString *symlinkDir = [symlinkPath stringByDeletingLastPathComponent];
+            
+            // Create directory structure for symlink if needed
+            if (![fm fileExistsAtPath:symlinkDir]) {
+              NSError *dirError;
+              [fm createDirectoryAtPath:symlinkDir withIntermediateDirectories:YES attributes:nil error:&dirError];
+              if (dirError) {
+                NSLog(@"[SubAppLoader] Failed to create symlink directory: %@, error: %@", symlinkDir, dirError);
+              } else {
+                NSLog(@"[SubAppLoader] Created symlink directory: %@", symlinkDir);
+              }
+            }
+            
+            // Remove existing file/symlink if exists
+            if ([fm fileExistsAtPath:symlinkPath]) {
+              NSError *removeError;
+              [fm removeItemAtPath:symlinkPath error:&removeError];
+              if (removeError) {
+                NSLog(@"[SubAppLoader] Failed to remove existing symlink: %@, error: %@", symlinkPath, removeError);
+              }
+            }
+            
+            // Create symlink using absolute path (simpler and more reliable)
+            NSError *symlinkError;
+            BOOL symlinkCreated = [fm createSymbolicLinkAtPath:symlinkPath
+                                            withDestinationPath:localPath
+                                                          error:&symlinkError];
+            if (symlinkCreated) {
+              NSLog(@"[SubAppLoader] ✅ Created symlink: %@ -> %@", symlinkPath, localPath);
+            } else {
+              NSLog(@"[SubAppLoader] ⚠️ Failed to create symlink: %@ -> %@, error: %@", symlinkPath, localPath, symlinkError);
+            }
+          }
+        }
+        
         [self.downloadedAssets addObject:assetKey];
         self.downloadedAssetsCount++;
         
@@ -591,6 +707,10 @@
 }
 
 - (nullable NSString *)assetPathForKey:(NSString *)key {
+  if (!key || key.length == 0) {
+    return nil;
+  }
+  
   // Remove "assets/" prefix from key if present to avoid duplicate path
   // assetsDirectoryPath already ends with "assets", so we don't need it in the key
   NSString *normalizedKey = key;
@@ -603,7 +723,25 @@
       normalizedKey = [normalizedKey substringFromIndex:1];
     }
   }
+  
+  // IMPORTANT: Preserve the full path structure for JS code compatibility
+  // JS code expects resources at paths like "node_modules/.pnpm/.../Ionicons.ttf"
+  // So we need to maintain the directory structure, not just extract the filename
+  // This ensures JS code can find resources using the original paths from the bundle
+  
+  // The normalizedKey now contains the relative path from assets/ (e.g., "node_modules/.pnpm/.../Ionicons.ttf")
+  // We'll use this directly to maintain the directory structure
+  
+  NSLog(@"[SubAppLoader] Asset key: '%@' -> normalized: '%@'", key, normalizedKey);
+  
   return [[self assetsDirectoryPath] stringByAppendingPathComponent:normalizedKey];
+}
+
+- (NSString *)_hashString:(NSString *)string {
+  // Simple hash function to create a unique filename from a path
+  // This is a fallback when we can't extract a meaningful filename
+  NSUInteger hash = [string hash];
+  return [NSString stringWithFormat:@"%lu", (unsigned long)hash];
 }
 
 - (NSString *)_getScopeKey {

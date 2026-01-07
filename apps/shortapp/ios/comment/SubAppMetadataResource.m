@@ -179,13 +179,19 @@
     return nil;
   }
   
+  // Check for fileHashes mapping (maps original paths to hash paths)
+  NSDictionary *fileHashes = iosMetadata[@"fileHashes"];
+  if (fileHashes && [fileHashes isKindOfClass:[NSDictionary class]]) {
+    NSLog(@"[SubAppMetadata] Found fileHashes mapping with %lu entries", (unsigned long)fileHashes.count);
+  }
+  
   // Transform assets to include full URLs
   NSMutableArray *transformedAssets = [NSMutableArray arrayWithCapacity:assets.count];
   NSString *baseUrlString = [baseUrl absoluteString];
   
   // Ensure baseUrl ends with /
   if (![baseUrlString hasSuffix:@"/"]) {
-    baseUrlString = [baseUrlString stringByAppendingString:@"/"];
+baseUrlString = [baseUrlString stringByAppendingString:@"/"];
   }
   
   for (NSDictionary *asset in assets) {
@@ -195,9 +201,44 @@
     
     NSString *assetPath = asset[@"path"];
     NSString *assetExt = asset[@"ext"];
+    NSString *assetHash = asset[@"hash"];
     
     if (![assetPath isKindOfClass:[NSString class]] || assetPath.length == 0) {
       continue;
+    }
+    
+    // Try to find original path from fileHashes mapping
+    // fileHashes maps: originalPath -> hash
+    // We need to find: hash -> originalPath (reverse lookup)
+    NSString *originalPath = nil;
+    if (fileHashes && [fileHashes isKindOfClass:[NSDictionary class]]) {
+      // Extract hash from assetPath (e.g., "assets/7d40544b..." -> "7d40544b...")
+      NSString *hashFromPath = assetPath;
+      if ([hashFromPath hasPrefix:@"assets/"]) {
+        hashFromPath = [hashFromPath substringFromIndex:7];
+      }
+      
+      // Reverse lookup: find original path by hash
+      for (NSString *origPath in fileHashes.allKeys) {
+        NSString *hashValue = fileHashes[origPath];
+        if ([hashValue isKindOfClass:[NSString class]] && [hashValue isEqualToString:hashFromPath]) {
+          originalPath = origPath;
+          if (transformedAssets.count < 3) {
+            NSLog(@"[SubAppMetadata] Found original path mapping: %@ -> %@", origPath, hashFromPath);
+          }
+          break;
+        }
+      }
+    }
+    
+    // Also try direct fields in asset dictionary
+    if (!originalPath) {
+      originalPath = asset[@"filePath"] ?: asset[@"sourcePath"] ?: asset[@"name"] ?: asset[@"file"];
+    }
+    
+    // Log asset structure for debugging (only first few to avoid spam)
+    if (transformedAssets.count < 3) {
+      NSLog(@"[SubAppMetadata] Asset[%lu] structure: %@", (unsigned long)transformedAssets.count, asset);
     }
     
     // Remove leading / from assetPath if present
@@ -213,10 +254,17 @@
     NSString *fullAssetUrlString = [baseUrlString stringByAppendingString:assetPath];
     NSURL *assetURL = [NSURL URLWithString:fullAssetUrlString];
     
-    // Create asset dictionary with url and key (using path as key)
+    // Create asset dictionary with url and key
+    // IMPORTANT: We need to store both the hash path (for downloading) and original path (for JS lookup)
     NSMutableDictionary *transformedAsset = [NSMutableDictionary dictionaryWithDictionary:asset];
     transformedAsset[@"url"] = fullAssetUrlString;
-    transformedAsset[@"key"] = assetPath; // Use path as key for asset lookup
+    transformedAsset[@"key"] = assetPath; // Use hash path as key for downloading
+    if (originalPath && originalPath.length > 0) {
+      transformedAsset[@"originalPath"] = originalPath; // Store original path for mapping
+      NSLog(@"[SubAppMetadata] Found original path: %@ -> hash path: %@", originalPath, assetPath);
+    } else {
+      NSLog(@"[SubAppMetadata] No original path found for asset: %@", assetPath);
+    }
     
     [transformedAssets addObject:transformedAsset];
   }
@@ -234,8 +282,19 @@
 
 - (NSString *)scopeKeyFromUrl:(NSURL *)url {
   // Use URL host + path as scope key
+  // Remove filename (metadata.json or manifest.json) from path
   NSString *host = url.host ?: @"unknown";
   NSString *path = url.path ?: @"";
+  
+  // Remove filename from path (e.g., /metadata.json or /manifest.json)
+  // Keep only the directory path
+  if ([path hasSuffix:@"/metadata.json"] || [path hasSuffix:@"metadata.json"]) {
+    path = [path stringByReplacingOccurrencesOfString:@"/metadata.json" withString:@""];
+    path = [path stringByReplacingOccurrencesOfString:@"metadata.json" withString:@""];
+  } else if ([path hasSuffix:@"/manifest.json"] || [path hasSuffix:@"manifest.json"]) {
+    path = [path stringByReplacingOccurrencesOfString:@"/manifest.json" withString:@""];
+    path = [path stringByReplacingOccurrencesOfString:@"manifest.json" withString:@""];
+  }
   
   // Normalize path: remove trailing slash and leading slash
   path = [path stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"/"]];

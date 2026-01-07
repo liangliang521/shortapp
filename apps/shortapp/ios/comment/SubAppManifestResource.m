@@ -145,8 +145,19 @@
 
 - (NSString *)scopeKeyFromUrl:(NSURL *)url {
   // Use URL host + path as scope key
+  // Remove filename (metadata.json or manifest.json) from path
   NSString *host = url.host ?: @"unknown";
   NSString *path = url.path ?: @"";
+  
+  // Remove filename from path (e.g., /metadata.json or /manifest.json)
+  // Keep only the directory path
+  if ([path hasSuffix:@"/metadata.json"] || [path hasSuffix:@"metadata.json"]) {
+    path = [path stringByReplacingOccurrencesOfString:@"/metadata.json" withString:@""];
+    path = [path stringByReplacingOccurrencesOfString:@"metadata.json" withString:@""];
+  } else if ([path hasSuffix:@"/manifest.json"] || [path hasSuffix:@"manifest.json"]) {
+    path = [path stringByReplacingOccurrencesOfString:@"/manifest.json" withString:@""];
+    path = [path stringByReplacingOccurrencesOfString:@"manifest.json" withString:@""];
+  }
   
   // Normalize path: remove trailing slash and leading slash
   path = [path stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"/"]];

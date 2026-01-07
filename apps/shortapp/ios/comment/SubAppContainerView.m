@@ -19,8 +19,7 @@
 - (instancetype)init {
   if (self = [super init]) {
     NSLog(@"[SubAppContainerView] init called");
-    // Set background color for debugging (orange)
-    self.backgroundColor = [UIColor colorWithRed:1.0 green:0.96 blue:0.9 alpha:1.0];
+    // Don't force a background color here; let the RN side or sub-app decide.
     
     // Listen for sub-app root view ready notification
     [[NSNotificationCenter defaultCenter] addObserver:self
@@ -113,7 +112,7 @@
     // Configure the view
     toAttach.frame = self.bounds;
     toAttach.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    toAttach.backgroundColor = [UIColor colorWithRed:0.9 green:0.8 blue:1.0 alpha:1.0];
+    // Do not override background color; use whatever the sub-app sets.
     
     // Add to container with exception handling
     @try {
@@ -150,8 +149,7 @@ RCT_EXPORT_MODULE(SubAppContainerView)
 
 - (UIView *)view {
   SubAppContainerView *view = [[SubAppContainerView alloc] init];
-  // Set background color for debugging (orange)
-  view.backgroundColor = [UIColor colorWithRed:1.0 green:0.96 blue:0.9 alpha:1.0];
+  // Don't force a background color; keep it transparent/controlled by RN.
   NSLog(@"[SubAppContainerViewManager] Created view: %@", view);
   return view;
 }

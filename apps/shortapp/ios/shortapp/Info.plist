@@ -28,6 +28,8 @@
         <key>CFBundleURLSchemes</key>
         <array>
           <string>dev.shortapp.vibe.code.ai.app.builder</string>
+          <!-- Google OAuth / Google Sign-In URL scheme -->
+          <string>com.googleusercontent.apps.98810470437-blnapfvh4jorcna4c0jlrknnjtr44rpq</string>
         </array>
       </dict>
     </array>

@@ -7,7 +7,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   StyleSheet,
-  ActivityIndicator,
   Text,
   Pressable,
   Platform,
@@ -441,7 +440,6 @@ export default function ProjectWebViewScreen() {
       <View style={styles.outerContainer}>
         <View style={styles.container}>
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#007AFF" />
             <Text style={styles.loadingText}>Loading...</Text>
           </View>
         </View>
@@ -470,7 +468,7 @@ export default function ProjectWebViewScreen() {
       <View style={styles.container}>
 
       {/* 根据项目类型选择预览组件 */}
-      {projectType === 'web' ? (
+      {projectType === 'web' || projectType === 'miniapp' ? (
         <WebPreview
           ref={webPreviewRef}
           previewUrl={previewUrl}

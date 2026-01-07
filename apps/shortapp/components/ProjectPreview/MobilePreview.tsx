@@ -1,7 +1,7 @@
 /**
- * MobilePreview - Mobile 项目预览组件
- * 用于显示 miniapp 类型项目的预览（使用原生子 App 加载）
- * 简化版本：只保留核心预览功能，下载过程全屏覆盖显示
+ * MobilePreview - Mobile project preview component
+ * Used to display the preview of miniapp-type projects (loaded via native sub app)
+ * Simplified version: keeps only the core preview logic and shows a full-screen overlay while downloading
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -38,7 +38,7 @@ export interface MobilePreviewRef {
   refresh: () => void;
 }
 
-// TODO: 测试用固定地址，后续需要移除
+// TODO: Fixed test URL, should be removed later
 const TEST_MANIFEST_URL = 'https://bc5ac454-31fa-4403-8795-55917b1f579f.shortapp.space/metadata.json';
 
 const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
@@ -57,10 +57,10 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
   const containerRef = useRef(null);
   const isMountedRef = useRef(true);
 
-  // 是否显示下载覆盖层（加载中且未就绪时显示）
+  // Whether to show the download overlay (shown while loading and before ready)
   const showLoadingOverlay = isLoading && !subAppReady;
 
-  // 监听加载进度
+  // Listen to loading progress
   useEffect(() => {
     const unsubscribe = SubAppLauncherService.addProgressListener((progress) => {
       setLoadingProgress(progress);
@@ -72,7 +72,7 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
     };
   }, []);
 
-  // 监听子 App 就绪事件
+  // Listen for sub app ready events
   useEffect(() => {
     console.log('[MobilePreview] Setting up onSubAppReady listener');
     const unsubscribe = SubAppLauncherService.addSubAppReadyListener(() => {
@@ -88,9 +88,9 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
     };
   }, [onLoadEndProp]);
 
-  // 监听全局错误（捕获子 App 的未处理错误）
+  // Listen for global errors (capture unhandled errors from the sub app)
   useEffect(() => {
-    // 设置全局错误处理器来捕获子 App 的错误
+    // Set global error handler to capture errors from the sub app
     // @ts-ignore - ErrorUtils is a global object in React Native
     const ErrorUtils = (global as any).ErrorUtils;
     if (!ErrorUtils) {
@@ -102,11 +102,11 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
     
     if (ErrorUtils.setGlobalHandler) {
       ErrorUtils.setGlobalHandler((error: Error, isFatal?: boolean) => {
-        // 检查错误是否来自子 App（通过错误堆栈和消息判断）
+        // Check whether the error comes from the sub app (by stack and message)
         const errorStack = error.stack || '';
         const errorMessage = error.message || '';
         
-        // 判断是否为子 App 错误
+        // Determine if this is a sub app error
         const isSubAppError = 
           errorStack.includes('SubApp') || 
           errorStack.includes('sub-app') ||
@@ -119,14 +119,15 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
         if (isSubAppError) {
           console.error('❌ [MobilePreview] Caught sub-app error:', error);
           
-          // 生成更有价值的错误信息
-          let userFriendlyMessage = '子 App 加载失败';
+          // Generate a more user-friendly error message
+          let userFriendlyMessage = 'Sub app failed to load';
           if (errorMessage.includes('scheme') || errorMessage.includes('Cannot make a deep link')) {
-            userFriendlyMessage = '子 App 配置错误：缺少深链接配置。这通常不影响核心功能，但深链接功能可能无法使用。';
+            userFriendlyMessage =
+              'Sub app configuration error: missing deep link configuration. This usually does not affect core features, but deep linking may not work.';
           } else if (errorMessage.includes('ExpoLinking')) {
-            userFriendlyMessage = '子 App 链接模块错误：' + errorMessage;
+            userFriendlyMessage = 'Sub app linking module error: ' + errorMessage;
           } else {
-            userFriendlyMessage = `子 App 运行时错误：${errorMessage}`;
+            userFriendlyMessage = `Sub app runtime error: ${errorMessage}`;
           }
           
           setError(userFriendlyMessage);
@@ -134,11 +135,11 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
           setSubAppReady(false);
           onErrorProp?.(userFriendlyMessage);
           
-          // 不调用原始错误处理器，防止应用崩溃
+          // Do not call the original error handler to avoid crashing the host app
           return;
         }
         
-        // 对于其他错误，使用原始错误处理器
+        // For other errors, fall back to the original handler
         if (originalErrorHandler) {
           originalErrorHandler(error, isFatal);
         }
@@ -146,16 +147,16 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
     }
 
     return () => {
-      // 恢复原始错误处理器
+      // Restore original error handler
       if (ErrorUtils.setGlobalHandler && originalErrorHandler) {
         ErrorUtils.setGlobalHandler(originalErrorHandler);
       }
     };
   }, [onErrorProp]);
 
-  // 打开子 App
+  // Open sub app
   const openSubApp = useCallback(async () => {
-    // 使用测试地址覆盖传入的 previewUrl
+    // Use the incoming previewUrl as manifest URL
     console.log('[MobilePreview] Opening sub app with preview URL:', previewUrl);
     const manifestUrl =  previewUrl;
     
@@ -169,11 +170,11 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
     setIsLoading(true);
     setError(null);
     setSubAppReady(false);
-    setLoadingProgress({ status: '开始加载...', done: 0, total: 1, progress: 0 });
+    setLoadingProgress({ status: 'Starting to load...', done: 0, total: 1, progress: 0 });
     onLoadStartProp?.();
 
     try {
-      // 使用 normalizeExpUrlToHttp 处理 URL
+      // Use normalizeExpUrlToHttp to process the URL
       const normalizedUrl = normalizeExpUrlToHttp(manifestUrl);
       const moduleName = 'main';
       
@@ -196,12 +197,12 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
     }
   }, [previewUrl, projectId, onLoadStartProp, onErrorProp]);
 
-  // 刷新预览（重新打开子 App）
+  // Refresh preview (re-open sub app)
   const handleRefresh = useCallback(async () => {
     try {
       console.log('🔄 [MobilePreview] Refreshing mobile preview...');
       setIsLoading(true);
-      setLoadingProgress({ status: '正在刷新预览...', done: 0, total: 1, progress: 0 });
+      setLoadingProgress({ status: 'Refreshing preview...', done: 0, total: 1, progress: 0 });
       setSubAppReady(false);
       
       try {
@@ -219,19 +220,19 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
     } catch (error) {
       setIsLoading(false);
       setLoadingProgress(null);
-      const errorMessage = error instanceof Error ? error.message : '刷新预览失败';
+      const errorMessage = error instanceof Error ? error.message : 'Failed to refresh preview';
       setError(errorMessage);
       onErrorProp?.(errorMessage);
       console.error('[MobilePreview] Failed to reload sub app:', error);
     }
   }, [previewUrl, projectId, onErrorProp]);
 
-  // 暴露刷新方法给父组件
+  // Expose refresh method to parent component
   React.useImperativeHandle(ref, () => ({
     refresh: handleRefresh,
   }), [handleRefresh]);
 
-  // 组件挂载时自动打开子 App
+  // Automatically open sub app when component mounts
   useEffect(() => {
     if (isMountedRef.current) {
       openSubApp();
@@ -239,15 +240,15 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
 
     return () => {
       isMountedRef.current = false;
-      // 组件卸载时关闭子 App
+      // Close sub app when component unmounts
       SubAppLauncherService.closeSubApp();
     };
   }, [openSubApp]);
 
-  // 检查是否有有效的 manifest URL
+  // Check if there is a valid manifest URL
   const manifestUrl = TEST_MANIFEST_URL || previewUrl;
   
-  // 调试：打印接收到的 previewUrl
+  // Debug: log received previewUrl
   console.log('🔍 [MobilePreview] Received previewUrl:', {
     previewUrl,
     TEST_MANIFEST_URL,
@@ -292,7 +293,7 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
     <SubAppErrorBoundary
       onError={(error, errorInfo) => {
         console.error('❌ [MobilePreview] ErrorBoundary caught error:', error);
-        const errorMessage = error.message || '子 App 加载错误';
+        const errorMessage = error.message || 'Sub app load error';
         setError(errorMessage);
         setIsLoading(false);
         setSubAppReady(false);
@@ -343,7 +344,7 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
       {/* 错误提示覆盖层 */}
       {error && (
         <View style={styles.errorOverlay}>
-          {/* 返回按钮 */}
+          {/* Back button */}
           {onBack && (
             <View style={styles.errorHeader}>
               <Pressable
@@ -362,18 +363,18 @@ const MobilePreview = React.forwardRef<MobilePreviewRef, MobilePreviewProps>(({
           <View style={styles.errorContent}>
             <Text style={styles.errorText}>{error}</Text>
             <Text style={styles.errorSubtext}>
-              {error.includes('深链接') || error.includes('scheme') 
-                ? '这是子 App 的配置问题，不影响预览功能。您可以返回或刷新重试。'
-                : '请检查网络连接或联系开发者。'}
+              {error.toLowerCase().includes('deep link') || error.toLowerCase().includes('scheme')
+                ? 'This is a configuration issue inside the sub app. It does not affect the core preview, but deep linking may not work. You can go back or refresh to retry.'
+                : 'Please check your network connection or contact the developer.'}
             </Text>
             
-            {/* 返回按钮 */}
+            {/* Back button */}
             {onBack && (
               <TouchableOpacity
                 style={styles.errorBackButtonLarge}
                 onPress={onBack}
               >
-                <Text style={styles.errorBackButtonText}>返回</Text>
+                <Text style={styles.errorBackButtonText}>Back</Text>
               </TouchableOpacity>
             )}
           </View>
