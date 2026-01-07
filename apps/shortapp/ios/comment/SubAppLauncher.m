@@ -7,11 +7,18 @@
 
 #import "SubAppLauncher.h"
 #import "SubAppLoader.h"
+#import "SubAppExceptionHandler.h"
 #import <UIKit/UIKit.h>
 #import <React/RCTBridge.h>
 #import <React/RCTUtils.h>
+#import <React/RCTRootView.h>
+#import <React/RCTBridge+Private.h>
+#import <React/RCTAssert.h>
 #import "shortapp-Bridging-Header.h"
 #import "shortapp-Swift.h"
+
+// React Native notification names
+extern NSString *const RCTJavaScriptDidFailToLoadNotification;
 
 @interface SubAppLauncher () <SubAppLoaderDelegate>
 @property (class, nonatomic, strong) UIViewController *currentSubAppVC;
@@ -22,6 +29,7 @@
 @property (nonatomic, strong, nullable) RCTPromiseResolveBlock pendingResolve;
 @property (nonatomic, strong, nullable) RCTPromiseRejectBlock pendingReject;
 @property (nonatomic, strong, nullable) UIView *currentSubAppRootView;
+@property (nonatomic, strong, nullable) SubAppExceptionHandler *exceptionHandler;
 @end
 
 
@@ -92,7 +100,7 @@ RCT_EXPORT_MODULE(SubAppLauncher);
 
 - (NSArray<NSString *> *)supportedEvents
 {
-  return @[@"onLoadingProgress", @"onManifestProgress", @"onBundleProgress", @"onAssetsProgress", @"onSubAppReady", @"onUpdateDetected"];
+  return @[@"onLoadingProgress", @"onManifestProgress", @"onBundleProgress", @"onAssetsProgress", @"onSubAppReady", @"onUpdateDetected", @"onSubAppError"];
 }
 
 RCT_EXPORT_METHOD(openSubApp
@@ -152,6 +160,9 @@ RCT_EXPORT_METHOD(closeSubApp)
       [self.currentLoader stopUpdateChecking];
     }
     self.currentLoader = nil;
+    
+    // Clean up exception handler
+    self.exceptionHandler = nil;
     
     // Clean up rootView
     UIView *rootView = self.currentSubAppRootView;
@@ -313,31 +324,34 @@ RCT_EXPORT_METHOD(reloadSubApp
   
   NSLog(@"[SubAppLauncher] Creating rootView with bundleURL: %@, moduleName: %@", bundleURL, self.currentModuleName);
   
-  // Build rootView using a fresh factory
-  @try {
-    UIView *rootView = [SubAppFactoryHelper makeRootViewWithNewFactory:bundleURL
+    // Build rootView using a fresh factory
+    @try {
+      UIView *rootView = [SubAppFactoryHelper makeRootViewWithNewFactory:bundleURL
                                                             moduleName:self.currentModuleName
                                                          initialProps:self.currentInitialProps];
-    if (!rootView) {
-      NSLog(@"[SubAppLauncher] ERROR: Failed to create rootView from bundle");
-      if (self.pendingReject) {
-        self.pendingReject(@"ROOTVIEW_NIL", @"Failed to create rootView from bundle", nil);
-        self.pendingReject = nil;
-        self.pendingResolve = nil;
+      if (!rootView) {
+        NSLog(@"[SubAppLauncher] ERROR: Failed to create rootView from bundle");
+        if (self.pendingReject) {
+          self.pendingReject(@"ROOTVIEW_NIL", @"Failed to create rootView from bundle", nil);
+          self.pendingReject = nil;
+          self.pendingResolve = nil;
+        }
+        return;
       }
-      return;
-    }
-    rootView.translatesAutoresizingMaskIntoConstraints = YES;
-    // Set background color for debugging (purple - sub-app root view)
-    rootView.backgroundColor = [UIColor colorWithRed:0.9 green:0.8 blue:1.0 alpha:1.0];
-    
-    NSLog(@"[SubAppLauncher] RootView created successfully:");
-    NSLog(@"[SubAppLauncher] - rootView: %@", rootView);
-    NSLog(@"[SubAppLauncher] - rootView.frame: %@", NSStringFromCGRect(rootView.frame));
-    NSLog(@"[SubAppLauncher] - rootView.backgroundColor: %@", rootView.backgroundColor);
-    
-    // Store the rootView for embedding (not presenting as modal)
-    self.currentSubAppRootView = rootView;
+      rootView.translatesAutoresizingMaskIntoConstraints = YES;
+      // Set background color for debugging (purple - sub-app root view)
+      rootView.backgroundColor = [UIColor colorWithRed:0.9 green:0.8 blue:1.0 alpha:1.0];
+      
+      NSLog(@"[SubAppLauncher] RootView created successfully:");
+      NSLog(@"[SubAppLauncher] - rootView: %@", rootView);
+      NSLog(@"[SubAppLauncher] - rootView.frame: %@", NSStringFromCGRect(rootView.frame));
+      NSLog(@"[SubAppLauncher] - rootView.backgroundColor: %@", rootView.backgroundColor);
+      
+      // Set up exception handler for runtime errors
+      [self _setupExceptionHandlerForRootView:rootView];
+      
+      // Store the rootView for embedding (not presenting as modal)
+      self.currentSubAppRootView = rootView;
     
     NSLog(@"[SubAppLauncher] Stored currentSubAppRootView: %@", self.currentSubAppRootView);
     NSLog(@"[SubAppLauncher] Loaded bundle=%@ module=%@", bundleURL, self.currentModuleName);
@@ -501,6 +515,145 @@ static UIViewController *_subAppVC = nil;
 + (void)setCurrentSubAppVC:(UIViewController *)vc
 {
   _subAppVC = vc;
+}
+
+#pragma mark - Exception Handler Setup
+
+- (void)_setupExceptionHandlerForRootView:(UIView *)rootView
+{
+  // Create exception handler
+  self.exceptionHandler = [[SubAppExceptionHandler alloc] initWithSubAppLauncher:self];
+  
+  // Set up global fatal handler to catch errors that might bypass the delegate
+  // This is similar to expo-go's handleFatalReactError
+  __weak SubAppLauncher *weakSelf = self;
+  RCTFatalHandler fatalHandler = ^(NSError *error) {
+    SubAppLauncher *strongSelf = weakSelf;
+    if (strongSelf && strongSelf.exceptionHandler) {
+      NSString *message = error.localizedDescription ?: @"Unknown fatal error";
+      NSArray *stack = error.userInfo[@"RCTJSStackTraceKey"];
+      NSLog(@"[SubAppLauncher] ⚠️ Global fatal handler caught error: %@", message);
+      [strongSelf.exceptionHandler handleFatalJSExceptionWithMessage:message
+                                                                 stack:stack
+                                                           exceptionId:@0
+                                                       extraDataAsJSON:nil];
+    }
+  };
+  
+  // Set the global fatal handler
+  RCTSetFatalHandler(fatalHandler);
+  NSLog(@"[SubAppLauncher] Set global fatal handler");
+  
+  // NOTE: Why we use KVC here instead of passing exception handler during creation:
+  //
+  // expo-go 的实现方式：
+  // - 使用 EXVersionManager 来管理 React Native 实例
+  // - 在创建 EXVersionManager 时，通过 extraParams 传递 @"exceptionsManagerDelegate"
+  // - EXVersionManager 在创建 RCTExceptionsManager 模块时（EXVersionManagerObjC.mm:409-411），
+  //   会使用传入的 exceptionsManagerDelegate 来初始化
+  // - 这样异常处理器在模块创建时就绑定了，不需要后续注册
+  //
+  // shortapp 的实现方式：
+  // - 使用 ExpoReactNativeFactory.recreateRootView() 直接创建 rootView
+  // - 这个 API 不提供传递异常处理器的接口（不像 EXVersionManager 的 extraParams）
+  // - ExpoReactNativeFactory 隐藏了内部的 factory 和 host，无法在创建时传递参数
+  // - 因此需要通过 KVC 获取 bridge 并手动注册异常处理器
+  //
+  // 这是架构差异导致的：expo-go 使用更底层的 VersionManager，而 shortapp 使用高级的 Factory API
+  
+  // Try to get bridge from rootView
+  RCTBridge *subAppBridge = nil;
+  
+  // Method 1: Try to get bridge from RCTRootView (standard React Native)
+  if ([rootView isKindOfClass:[RCTRootView class]]) {
+    RCTRootView *rctRootView = (RCTRootView *)rootView;
+    subAppBridge = rctRootView.bridge;
+    NSLog(@"[SubAppLauncher] Got bridge from RCTRootView: %@", subAppBridge);
+  }
+  
+  // Method 2: Try to get bridge via KVC (for ExpoReactNativeFactory's rootView)
+  // ExpoReactNativeFactory 创建的 rootView 可能不是 RCTRootView，需要通过 KVC 访问内部属性
+  if (!subAppBridge) {
+    @try {
+      id bridge = [rootView valueForKey:@"bridge"];
+      if ([bridge isKindOfClass:[RCTBridge class]]) {
+        subAppBridge = (RCTBridge *)bridge;
+        NSLog(@"[SubAppLauncher] Got bridge via KVC: %@", subAppBridge);
+      }
+    } @catch (NSException *exception) {
+      NSLog(@"[SubAppLauncher] Could not get bridge via KVC: %@", exception);
+    }
+  }
+  
+  // Method 3: Try to get bridge from reactHost (React Native new architecture)
+  // 新架构使用 RCTHost，bridge 可能存储在 reactHost 中
+  if (!subAppBridge) {
+    @try {
+      id reactHost = [rootView valueForKey:@"reactHost"];
+      if (reactHost) {
+        id bridge = [reactHost valueForKey:@"bridge"];
+        if ([bridge isKindOfClass:[RCTBridge class]]) {
+          subAppBridge = (RCTBridge *)bridge;
+          NSLog(@"[SubAppLauncher] Got bridge from reactHost: %@", subAppBridge);
+        }
+      }
+    } @catch (NSException *exception) {
+      NSLog(@"[SubAppLauncher] Could not get bridge from reactHost: %@", exception);
+    }
+  }
+  
+  if (subAppBridge) {
+    // Register exception handler with the bridge
+    // Note: In React Native, exceptions manager is accessed via the bridge's module registry
+    id exceptionsManager = [subAppBridge moduleForName:@"RCTExceptionsManager"];
+    if (exceptionsManager) {
+      // Try to set the delegate
+      @try {
+        [exceptionsManager setValue:self.exceptionHandler forKey:@"delegate"];
+        NSLog(@"[SubAppLauncher] Registered exception handler with bridge");
+      } @catch (NSException *exception) {
+        NSLog(@"[SubAppLauncher] Could not set exception handler delegate: %@", exception);
+      }
+    } else {
+      NSLog(@"[SubAppLauncher] Could not find RCTExceptionsManager module");
+    }
+  } else {
+    NSLog(@"[SubAppLauncher] Could not get bridge from rootView, exception handler will use fallback event sending");
+  }
+  
+  // Also listen for React Native error notifications
+  // Note: Runtime errors are handled via RCTExceptionsManagerDelegate protocol methods
+  // These notifications are for additional error handling (loading failures)
+  [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(_handleReactNativeError:)
+                                                 name:RCTJavaScriptDidFailToLoadNotification
+                                               object:nil];
+  
+  // Note: Fatal runtime errors are handled via RCTExceptionsManagerDelegate.handleFatalJSExceptionWithMessage:
+  // There is no RCTFatalNotification in React Native - fatal errors go through the delegate
+}
+
+- (void)_handleReactNativeError:(NSNotification *)notification
+{
+  // Handle JavaScript load failures
+  NSError *error = notification.userInfo[@"error"];
+  NSString *message = error.localizedDescription ?: @"Failed to load JavaScript bundle";
+  
+  NSLog(@"[SubAppLauncher] React Native load error: %@", message);
+  
+  if (self.exceptionHandler) {
+    // Forward to exception handler
+    [self.exceptionHandler handleFatalJSExceptionWithMessage:message
+                                                         stack:nil
+                                                   exceptionId:@0
+                                               extraDataAsJSON:nil];
+  }
+}
+
+
+- (void)dealloc
+{
+  [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 @end

@@ -57,9 +57,8 @@ public class SubAppFactoryHelper: NSObject {
       launchOptions: nil
     )
     
-    // Set up error handling for the root view
-    // We'll wrap the root view in an error boundary at the JS level
-    // For now, we just ensure the view doesn't crash the app
+    // Note: Exception handler will be set up in SubAppLauncher after rootView is created
+    // because we need access to the bridge/host which is not directly available here
     
     return rootView
   }

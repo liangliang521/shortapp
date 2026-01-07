@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		3E0EEBDD2F0DF5A800F244C7 /* SubAppExceptionHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = 3E0EEBDC2F0DF5A800F244C7 /* SubAppExceptionHandler.m */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		3E8F9D282F06708D00F28448 /* SubAppFactoryHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E8F9D1C2F06708D00F28448 /* SubAppFactoryHelper.swift */; };
 		3E8F9D292F06708D00F28448 /* SubAppLoader.m in Sources */ = {isa = PBXBuildFile; fileRef = 3E8F9D202F06708D00F28448 /* SubAppLoader.m */; };
@@ -42,6 +43,8 @@
 		13B07F961A680F5B00A75B9A /* shortapp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shortapp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = shortapp/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = shortapp/Info.plist; sourceTree = "<group>"; };
+		3E0EEBDB2F0DF5A800F244C7 /* SubAppExceptionHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SubAppExceptionHandler.h; sourceTree = "<group>"; };
+		3E0EEBDC2F0DF5A800F244C7 /* SubAppExceptionHandler.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SubAppExceptionHandler.m; sourceTree = "<group>"; };
 		3E8F9D192F06708D00F28448 /* AppFactoryProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppFactoryProvider.swift; sourceTree = "<group>"; };
 		3E8F9D1A2F06708D00F28448 /* SubAppContainerView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SubAppContainerView.h; sourceTree = "<group>"; };
 		3E8F9D1B2F06708D00F28448 /* SubAppContainerView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SubAppContainerView.m; sourceTree = "<group>"; };
@@ -133,6 +136,8 @@
 				3E8F9D342F0A5C2500F28448 /* SubAppMetadataResource.m */,
 				3E8F9D252F06708D00F28448 /* SubAppUpdateManager.h */,
 				3E8F9D262F06708D00F28448 /* SubAppUpdateManager.m */,
+				3E0EEBDB2F0DF5A800F244C7 /* SubAppExceptionHandler.h */,
+				3E0EEBDC2F0DF5A800F244C7 /* SubAppExceptionHandler.m */,
 			);
 			path = comment;
 			sourceTree = "<group>";
@@ -421,6 +426,7 @@
 				3E8F9D2F2F06708D00F28448 /* SubAppLoadingProgress.m in Sources */,
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
 				433CE8FBEAF550D8C80D3379 /* ExpoModulesProvider.swift in Sources */,
+				3E0EEBDD2F0DF5A800F244C7 /* SubAppExceptionHandler.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
