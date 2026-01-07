@@ -60,8 +60,8 @@
   if (self = [super init]) {
     _manifestUrl = manifestUrl;
     _downloadedAssets = [NSMutableSet set];
-    _updateCheckPolicy = SubAppUpdateCheckPolicyAlways; // Default to Always for periodic checking
-    _updateCheckInterval = 60.0; // 60 seconds
+    _updateCheckPolicy = SubAppUpdateCheckPolicyNever; // Disable periodic checking by default
+    _updateCheckInterval = 60.0; // 60 seconds (not used when policy is Never)
     _isLoading = NO;
     _totalAssets = 0;
     _downloadedAssetsCount = 0;

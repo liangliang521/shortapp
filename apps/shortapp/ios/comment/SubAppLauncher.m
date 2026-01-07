@@ -249,8 +249,8 @@ RCT_EXPORT_METHOD(reloadSubApp
       dispatch_async(dispatch_get_main_queue(), ^{
         SubAppLoader *loader = [[SubAppLoader alloc] initWithManifestUrl:instance.currentManifestUrl];
         loader.delegate = instance;
-        // Use Always policy to periodically check for updates (similar to expo-go's behavior)
-        loader.updateCheckPolicy = SubAppUpdateCheckPolicyAlways;
+        // Disable periodic update checking
+        loader.updateCheckPolicy = SubAppUpdateCheckPolicyNever;
         instance.currentLoader = loader;
         
         // Store pending callbacks
@@ -294,8 +294,8 @@ RCT_EXPORT_METHOD(reloadSubApp
   // Create loader
   SubAppLoader *loader = [[SubAppLoader alloc] initWithManifestUrl:manifestURL];
   loader.delegate = self;
-  // Use Always policy to periodically check for updates (similar to expo-go's behavior)
-  loader.updateCheckPolicy = SubAppUpdateCheckPolicyAlways;
+  // Disable periodic update checking
+  loader.updateCheckPolicy = SubAppUpdateCheckPolicyNever;
   self.currentLoader = loader;
   
   // Start loading
